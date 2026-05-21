@@ -1,4 +1,0 @@
-# Append these lines to the root .gitignore manually (push_files won't append):
-# skills/morning-trading-briefing/config.yaml
-# skills/morning-trading-briefing/state/cache/
-# briefings/
