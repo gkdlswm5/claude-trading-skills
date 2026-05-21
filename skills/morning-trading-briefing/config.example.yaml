@@ -1,0 +1,131 @@
+# Morning Trading Briefing — user config
+#
+# Copy this file to config.yaml and edit. config.yaml is gitignored
+# so your watchlist + calendar IDs stay private.
+#
+# Iterate on this file weekly based on what the briefing surfaced vs.
+# what actually mattered. See references/BEST_PRACTICES.md.
+
+version: 1
+timezone: America/Los_Angeles   # Display timezone for calendar events
+market_timezone: America/New_York
+
+# ---- Calendars ----
+# Run `list_calendars` via the Calendar MCP and paste IDs here.
+# See references/CALENDAR_SETUP.md for how to create the 3 sub-calendars.
+calendars:
+  macro_events: ""      # e.g. abc123@group.calendar.google.com
+  earnings: ""
+  my_positions: ""
+
+# ---- Google Drive archive ----
+drive:
+  briefings_folder_id: ""   # Drive folder ID where dated .md files land
+  filename_pattern: "briefings/{date}-{mode}.md"   # {date}=YYYY-MM-DD, {mode}=morning|afternoon
+
+# ---- Watchlist ----
+# Tickers you don't necessarily hold but want covered in news/earnings/flow.
+# IB positions are pulled automatically and don't need to be listed.
+watchlist:
+  - SPY
+  - QQQ
+  - IWM
+  - TLT
+  - GLD
+  - USO
+  - UUP
+
+mega_caps:
+  # Always shown in earnings section regardless of whether you hold them.
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - TSLA
+  - AVGO
+
+# ---- Coverage toggles ----
+coverage:
+  us_equities_options: true
+  treasuries_rates: true
+  commodities: true
+  fx_crypto: true
+
+crypto_tickers:
+  - BTC-USD
+  - ETH-USD
+
+# ---- Alert thresholds ----
+alerts:
+  stop_loss_proximity_pct: 3.0       # Flag positions within 3% of stop
+  short_leg_delta_breach: 0.35       # Flag short calls/puts with |delta| > this
+  short_leg_dte_threshold: 14        # Flag short legs with DTE <= this
+  earnings_within_days: 7            # Flag holdings with earnings in next N days
+  unusual_options_min_volume_oi_ratio: 3.0
+
+# ---- Econ release filtering ----
+# Tier-1 is always shown. Tier-2 only if impact rating high. Global only if voter-impact.
+econ_releases:
+  tier_1_us_always:
+    - CPI
+    - Core CPI
+    - PPI
+    - Core PPI
+    - NFP / Unemployment
+    - FOMC Rate Decision
+    - FOMC Minutes
+    - GDP Advance/Final
+    - PCE / Core PCE
+  tier_2_us_if_important:
+    - Retail Sales
+    - ISM Manufacturing PMI
+    - ISM Services PMI
+    - Initial Jobless Claims
+    - Housing Starts / Building Permits
+    - Existing Home Sales
+    - University of Michigan Consumer Sentiment
+    - Consumer Confidence
+  fed_speakers:
+    show_all_voters: true
+    show_nonvoters: false
+  global_if_important:
+    - ECB Rate Decision
+    - BOJ Rate Decision
+    - China CPI
+    - China Manufacturing PMI
+    - OPEC+ Meeting
+    - EIA Crude Oil Inventories
+
+# ---- Sections to include ----
+sections:
+  morning:
+    must_read_top_3: true
+    macro_day_ahead: true
+    earnings_today: true
+    my_positions: true
+    opportunities: true
+  afternoon:
+    todays_recap: true
+    closing_bell_positioning: true
+    overnight_risks: true
+    tomorrows_setup: true
+
+# ---- Opportunities ----
+opportunities:
+  scanner_bullish_top_n: 3
+  scanner_pmcc_top_n: 3
+  insider_buying_min_value_usd: 1000000
+  whale_hunting_on_holdings: true
+
+# ---- Output style ----
+style:
+  indicator_depth: full        # full | medium | light
+  show_reaction_history: true  # "hot prints historically sell bonds, lift USD"
+  show_so_what_per_section: true   # each section ends with "→ implication for your book"
+  max_brief_length_words: 1500
+
+# ---- Noise log ----
+# After each briefing, jot one line. Once a week prune what doesn't matter.
+noise_log_path: "briefings/noise_log.md"
