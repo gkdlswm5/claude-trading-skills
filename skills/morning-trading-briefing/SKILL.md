@@ -12,6 +12,17 @@ Produces personalized pre-open and afternoon briefings for stocks, options, rate
 - `/morning-brief` → `mode=morning`
 - `/afternoon-brief` → `mode=afternoon`
 
+## Integration modes
+
+Set `integration.ib_integration` in `config.yaml` to control which sections run:
+
+| Mode | When to use | What runs |
+|---|---|---|
+| `ib_integration: false` | Claude Code Web, or any environment without local TWS/IB Gateway | Macro day-ahead, market-wide earnings, opportunities, must-read. Skips position-specific sections. |
+| `ib_integration: true` | Local Claude Code with TWS or IB Gateway running on `localhost:7497` | All sections, including overnight P&L, stop alerts, short-leg roll candidates, holdings news, earnings-on-holdings. |
+
+When `ib_integration: false`, the watchlist takes over as the proxy for "holdings" — news filtering, unusual flow detection, and earnings-of-interest all run against `config.watchlist + config.mega_caps` instead of IB positions.
+
 ## Pipeline overview
 
 The skill is hybrid: Python scripts handle deterministic work (alert math, template rendering, calendar-event JSON generation); the LLM handles synthesis (assembling sub-skill outputs into `brief_data.json`, writing the "must-read top 3", calling MCP tools to write events + Drive files).
@@ -37,22 +48,24 @@ The skill is hybrid: Python scripts handle deterministic work (alert math, templ
 
 Read `skills/morning-trading-briefing/config.yaml`. If it doesn't exist, halt and tell the user to copy `config.example.yaml` → `config.yaml` and fill in calendar IDs + watchlist (see `references/CALENDAR_SETUP.md`).
 
+Check `integration.ib_integration`. The procedure below is for the full IB-integrated path; **see the "No-IB mode" section below for what to skip when `ib_integration: false`**.
+
 ### Step 1 — Gather raw data (parallel where possible)
 
-| Need | Skill / source |
-|---|---|
-| Today's econ events | `economic-calendar-fetcher` (FMP API, today's date range) |
-| Today's earnings | `earnings-calendar` (today, filtered by config.mega_caps + watchlist + holdings) |
-| IB positions | `ib-portfolio` |
-| Pre-market quotes | `stock-quote` for SPY/QQQ/DXY/UUP/TLT/USO/GLD/HG=F/UNG + crypto |
-| Overnight Asia/Europe | `market-news-analyst` or WebFetch on Nikkei/HSI/KOSPI/DAX/FTSE close prices |
-| Rates snapshot | `stock-quote` on ^TNX (10Y), ^FVX (5Y), ^IRX (3M); FRED for real yields if needed |
-| Sector ETFs | `sector-analyst` or `stock-quote` on XLF/XLE/XLK/XLI/XLV |
-| Pre-market movers | `finviz-screener` (pre-market gainers/losers >$1B mcap) |
-| News on holdings | `news-sentiment` per holding ticker |
-| Unusual flow | `whale-hunting` per holding ticker |
-| Insider buying | `insider-trading` (watchlist + holdings) |
-| Fresh setups | `scanner-bullish` + `scanner-pmcc` (top 3 each) |
+| Need | Skill / source | Skip if no IB? |
+|---|---|---|
+| Today's econ events | `economic-calendar-fetcher` (FMP API, today's date range) | no |
+| Today's earnings | `earnings-calendar` (today, filtered by config.mega_caps + watchlist + holdings) | no |
+| IB positions | `ib-portfolio` | **yes** |
+| Pre-market quotes | `stock-quote` for SPY/QQQ/DXY/UUP/TLT/USO/GLD/HG=F/UNG + crypto | no |
+| Overnight Asia/Europe | `market-news-analyst` or WebFetch on Nikkei/HSI/KOSPI/DAX/FTSE close prices | no |
+| Rates snapshot | `stock-quote` on ^TNX (10Y), ^FVX (5Y), ^IRX (3M); FRED for real yields if needed | no |
+| Sector ETFs | `sector-analyst` or `stock-quote` on XLF/XLE/XLK/XLI/XLV | no |
+| Pre-market movers | `finviz-screener` (pre-market gainers/losers >$1B mcap) | no |
+| News on holdings/watchlist | `news-sentiment` per ticker (holdings ∪ watchlist) | no (uses watchlist) |
+| Unusual flow | `whale-hunting` per holding/watchlist ticker | no (uses watchlist) |
+| Insider buying | `insider-trading` (watchlist + holdings) | no (uses watchlist) |
+| Fresh setups | `scanner-bullish` + `scanner-pmcc` (top 3 each) | no |
 
 ### Step 2 — Enrich econ events with explainer cards
 
@@ -65,7 +78,9 @@ python3 skills/econ-indicator-explainer/scripts/lookup_indicator.py --json "<eve
 - On match: parse JSON `.sections` → populate `what`, `how_measured`, `why_matters`, `reaction_history`, `watch_for_today` on the brief_data econ_releases entry.
 - On no match (exit 2): include the event with only the FMP-supplied fields, and append the unmapped name to `skills/morning-trading-briefing/state/unmapped_indicators.log` so the user can add a card later.
 
-### Step 3 — Run alert checker
+### Step 3 — Run alert checker (IB only)
+
+Skip when `ib_integration: false`.
 
 Write positions + today's earnings to temp JSON, then:
 
@@ -85,8 +100,8 @@ Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate
 
 - `snapshot`, `econ_releases`, `fed_speakers`, `overnight`, `rates`, `commodities`, `eia_opec_today`
 - `fx`, `sector_etfs`, `rotation_read`, `premarket_movers`
-- `earnings_today` (split mega-caps vs. my_positions)
-- `my_positions` (pnl_rows + alerts from step 3 + holding_events + upcoming_earnings)
+- `earnings_today` (split mega-caps vs. my_positions — `my_positions` empty when no IB)
+- `my_positions` (omit entirely when no IB, or just populate `holding_events` with watchlist news)
 - `opportunities`
 
 For each section that ends with a `so_what` field (rates, fx, sector rotation): write one sentence tying the data to the user's actual positions. This is the discipline that turns the brief from a data dump into actionable signal.
@@ -99,7 +114,10 @@ This is the most important synthesis step. After everything else is assembled, l
 - "NVDA reports AMC, implied move 8.5%. Your short Jun20 145C has 0.42 delta — roll before close."
 - "USD/JPY at 155.4 — BOJ intervention risk overnight. Could spike VIX into open."
 
-Tight, actionable, ties to holdings. If you can't write 3 items that meet this bar, write fewer — don't fluff.
+In no-IB mode, replace position-specific references with watchlist references:
+- "NVDA reports AMC, implied move 8.5%. If you trade NVDA earnings, IV at 95th percentile — consider a strangle or stay flat."
+
+Tight, actionable, ties to holdings or watchlist tickers. If you can't write 3 items that meet this bar, write fewer — don't fluff.
 
 ### Step 6 — Render + emit events.json
 
@@ -147,28 +165,53 @@ Morning Brief written: briefings/2026-05-21-morning.md (5.8KB)
   Action items: 1 stop alert (TLT), 1 short-leg alert (NVDA Jun20 145C)
 ```
 
+In no-IB mode the "Action items" line is omitted.
+
+## No-IB mode: what changes
+
+When `integration.ib_integration: false`:
+
+| Step | Behavior |
+|---|---|
+| Step 1 — `ib-portfolio` | **Skipped.** Watchlist + mega_caps becomes the universe. |
+| Step 3 — `check_alerts.py` | **Skipped entirely.** No stop alerts or short-leg alerts. |
+| Step 4 — `my_positions` section | Omit entirely OR populate only `holding_events` (news on watchlist). No `pnl_rows`, no alerts. |
+| Step 4 — `earnings_today.my_positions` | Empty list. All earnings go in `megacaps` cut. |
+| Step 5 — must-read | Reference watchlist tickers instead of holdings. |
+| Step 7 — Calendar events | Macro Events + Earnings calendars get fully populated. My Positions calendar gets only the all-day summary event (no stop/roll alerts). |
+| Step 9 — summary | Omit "Action items" line. |
+
 ## Afternoon mode procedure
 
 Same overall structure with these differences:
 
-- **Step 1 data**: close prices instead of pre-market; today's P&L (BOD vs. current portfolio value); end-of-day news/headlines for "what moved & why"; AMC earnings on holdings; tomorrow's econ calendar (next-day filter)
-- **Step 4 sections**: `snapshot` (close), `market_moves` (today's drivers), `pnl_recap`, `my_top_movers`, `closing_bell_actions`, `asia_releases`, `amc_earnings`, `geopolitical_summary`, `tomorrow_econ`, `tomorrow_fed_speakers`, `tomorrow_earnings`, `key_levels`
+- **Step 1 data**: close prices instead of pre-market; today's P&L (BOD vs. current portfolio value) — **skip if no IB**; end-of-day news/headlines for "what moved & why"; AMC earnings on holdings; tomorrow's econ calendar (next-day filter)
+- **Step 4 sections**: `snapshot` (close), `market_moves` (today's drivers), `pnl_recap` (skip if no IB), `my_top_movers` (skip if no IB), `closing_bell_actions` (skip if no IB), `asia_releases`, `amc_earnings`, `geopolitical_summary`, `tomorrow_econ`, `tomorrow_fed_speakers`, `tomorrow_earnings`, `key_levels`
 - **Step 7**: only writes the all-day "Afternoon Brief" event to My Positions (no macro/earnings events — those were created in morning)
 
 ## First-run checklist
 
+### Phase 1 — No-IB (works on Claude Code Web)
+
 1. ☐ Create the 3 Google Calendars manually (see `references/CALENDAR_SETUP.md`)
 2. ☐ Create the Drive folder `Trading Briefings`, grab its ID
-3. ☐ `cp config.example.yaml config.yaml`; paste calendar + Drive IDs; edit watchlist
-4. ☐ Set `FMP_API_KEY` env var (for economic-calendar-fetcher)
+3. ☐ Set `FMP_API_KEY` in your Claude Code Web environment config (web UI)
+4. ☐ `cp config.example.yaml config.yaml`; set `ib_integration: false`; paste calendar + Drive IDs; edit watchlist
 5. ☐ Run `/morning-brief --dry-run` — verify markdown looks right, no events written
 6. ☐ Run `/morning-brief --skip-calendar` — verify Drive upload
-7. ☐ Run `/morning-brief` — full flow, calendar + Drive
-8. ☐ Run for 10 sessions; keep the noise log; refine config weekly
+7. ☐ Run `/morning-brief` — full flow, calendar + Drive (no IB sections)
+8. ☐ Run for ~10 sessions; keep the noise log; refine config weekly
+
+### Phase 2 — Add IB (when you have TWS/IB Gateway reachable)
+
+9. ☐ Launch TWS or IB Gateway on the machine that runs Claude Code
+10. ☐ Flip `ib_integration: true` in `config.yaml`
+11. ☐ Run `/morning-brief --dry-run` again — confirm position sections populate
+12. ☐ Run `/morning-brief` — full flow with IB integration
 
 ## Status
 
 - ✅ Step C: scaffolding, config, templates, calendar setup, skills inventory
 - ✅ Step A: econ-indicator-explainer with 31 indicator cards + lookup script
 - ✅ Step B: render/alerts/compose scripts + tests + JSON schema + sample data
-- Ready for first dry-run.
+- ✅ No-IB mode toggle added — ready for Phase 1 dry-run on Claude Code Web
