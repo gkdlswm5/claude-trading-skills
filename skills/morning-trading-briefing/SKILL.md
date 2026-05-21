@@ -48,15 +48,30 @@ Both load config from `skills/morning-trading-briefing/config.yaml` (user-edited
 3. **Overnight risks** — Asia data on the docket, AMC earnings on your tickers, geopolitical events
 4. **Tomorrow's setup** — econ releases, Fed speakers, earnings, key levels to watch
 
+## Macro section pipeline (uses econ-indicator-explainer)
+
+For today's economic releases:
+
+```
+1. economic-calendar-fetcher → list of FMP events for today (US + global filtered by config)
+2. For each event:
+   a. lookup_indicator.py --json "<event.event_name>"
+   b. If matched: render full card (what / how / why / reaction / watch-for)
+   c. If unmatched: render minimal card + log to state/unmapped_indicators.log
+3. Render fed-speakers section separately (not in indicators KB — they're people, not data)
+```
+
+The indicator card already contains `## Reaction history` and `## Watch for today` — those flow straight into the brief and the Calendar event description.
+
 ## Skill dependencies
 
-See `references/SKILLS_INVENTORY.md` for the full mapping of which skill feeds each section. High-level:
+See `references/SKILLS_INVENTORY.md` for the full mapping. High-level:
 
 - IB positions / P&L → `ib-portfolio`, `ib-portfolio-action-report`
 - Stops + rolls + PMCC → `ib-stop-loss`, `ib-find-short-roll`, `ib-pmcc-advisor`
 - Earnings → `earnings-calendar` + `earnings-trade-analyzer` + `greeks` for implied move
 - News / sentiment → `news-sentiment` + `market-news-analyst`
-- Macro events → `economic-calendar-fetcher` + `econ-indicator-explainer` (built in step A)
+- Macro events → `economic-calendar-fetcher` + `econ-indicator-explainer` ✅ (step A complete)
 - Sector rotation / breadth → `sector-analyst`, `market-breadth-analyzer`
 - Setups → `scanner-bullish`, `scanner-pmcc`, `whale-hunting`, `insider-trading`
 - Calendar write → Google Calendar MCP
@@ -71,8 +86,8 @@ See `references/SKILLS_INVENTORY.md` for the full mapping of which skill feeds e
 
 ## Status
 
-STEP C complete: scaffolding, config, templates, calendar setup docs, skills inventory.
-STEP A pending: `econ-indicator-explainer` skill (the "why it matters" knowledge base).
-STEP B pending: orchestration logic that ties everything together and renders the brief.
+- STEP C complete: scaffolding, config, templates, calendar setup docs, skills inventory.
+- STEP A complete: `econ-indicator-explainer` skill with 30+ indicator cards + lookup script + tests.
+- STEP B pending: orchestration logic that ties everything together and renders the brief.
 
-Do not invoke for real use until Steps A and B are complete.
+Do not invoke for real use until Step B is complete.
