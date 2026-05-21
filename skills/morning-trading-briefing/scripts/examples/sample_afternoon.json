@@ -1,0 +1,58 @@
+{
+  "mode": "afternoon",
+  "date": "2026-05-21",
+  "generated_at_et": "2026-05-21 15:30 ET",
+  "snapshot": {
+    "spy_close": "584.20",
+    "spy_chg": "+0.13%",
+    "dxy_close": "104.0",
+    "us10y_close": "4.28",
+    "vix_close": "13.2"
+  },
+  "market_moves": [
+    {"topic": "CPI cooled", "summary": "Headline 3.0% (vs 3.1% est), Core 3.3% (vs 3.4% est). Bull-steepener: 10Y -4bps, 2Y -9bps. Long-duration tech led."},
+    {"topic": "ECB cut 25bp as expected", "summary": "Lagarde hawkish on path forward — EUR/USD reversed gain to close -0.2%."},
+    {"topic": "Oil flat into OPEC tomorrow", "summary": "WTI closed $72.55, +0.1%. Headline-driven; tomorrow's JMMC sets tone."}
+  ],
+  "pnl_recap": {
+    "rows": [
+      {"ticker": "NVDA", "day_pnl": "+$420", "day_pct": "+3.7%"},
+      {"ticker": "AAPL", "day_pnl": "+$112", "day_pct": "+0.5%"},
+      {"ticker": "TLT", "day_pnl": "+$148", "day_pct": "+0.83%"}
+    ],
+    "day_pnl": "+$680",
+    "week_pnl": "+$1,240",
+    "ytd_pnl": "+$18,420"
+  },
+  "my_top_movers": [
+    {"ticker": "NVDA", "change": "+3.7%", "driver": "Pre-earnings positioning + AI capex commentary"},
+    {"ticker": "TLT", "change": "+0.83%", "driver": "Cool CPI → curve bull-steepening → long duration bid"}
+  ],
+  "minutes_to_close": 30,
+  "closing_bell_actions": "1. Roll NVDA Jun20 145C → Jul18 150C before close (avoid earnings gap on short leg) — $2.10 debit\n2. Consider closing TLT stock stop trail to $88 given today's rally\n3. No action needed on AAPL ahead of next week's WWDC",
+  "asia_releases": [
+    {"time_et": "21:30", "name": "China Industrial Production YoY (April)", "consensus": "6.4%", "impact": "Below 6% = bearish copper/iron ore; above 7% = bullish global cyclicals"}
+  ],
+  "amc_earnings": [
+    {"ticker": "NVDA", "eps_est": "0.65", "implied_move": "8.5", "position_summary": "Jan26 110C LEAPS + Jul18 150C short (rolled)"}
+  ],
+  "geopolitical_summary": "Trump-Xi summit announced for June 15 — markets pricing reduced tariff escalation. Watch USD/CNH for pre-summit positioning.",
+  "tomorrow_econ": [
+    {"time_et": "08:30", "name": "Initial Jobless Claims", "consensus": "215K", "prior": "208K"},
+    {"time_et": "10:00", "name": "Existing Home Sales", "consensus": "4.10M", "prior": "4.19M"},
+    {"time_et": "10:00", "name": "OPEC+ JMMC Meeting", "consensus": "rollover", "prior": "—"}
+  ],
+  "tomorrow_fed_speakers": [
+    {"time_et": "13:00", "name": "Waller", "voter_status": "voter"},
+    {"time_et": "15:30", "name": "Bostic", "voter_status": "non-voter"}
+  ],
+  "tomorrow_earnings": [
+    {"ticker": "TGT", "timing": "BMO", "eps_est": "1.62", "implied_move": "6.2"},
+    {"ticker": "SNOW", "timing": "AMC", "eps_est": "0.16", "implied_move": "11.0"}
+  ],
+  "key_levels": {
+    "spy_support": "580.50",
+    "spy_resistance": "586.20",
+    "custom": "10Y: 4.25 support / 4.35 resistance. DXY: 103.7 support / 104.5 resistance."
+  }
+}

@@ -14,21 +14,33 @@ $ARGUMENTS
 ```
 
 - `--dry-run` — generate brief only
-- `--skip-calendar` — save to Drive only
-- `--skip-drive` — calendar only
+- `--skip-calendar` — Drive + local only
+- `--skip-drive` — Calendar + local only
 - (no args) — full run
 
 ## Execution
 
-1. Load `skills/morning-trading-briefing/config.yaml`
-2. Invoke the `morning-trading-briefing` skill with `mode=afternoon`
-3. Skill assembles:
-   - Today's recap: SPY/QQQ/DXY/10Y/oil close, your P&L per position, what moved & why
-   - Overnight risks: Asia data on the docket, AMC earnings on your tickers, geopolitical headlines
-   - Tomorrow's setup: econ releases, Fed speakers, earnings (your tickers + mega-caps), key levels
-4. Render via `references/briefing-template.md` (afternoon variant)
-5. Side effects: all-day "Afternoon Brief" event on My Positions calendar + `briefings/YYYY-MM-DD-afternoon.md` to Drive
+Invoke `morning-trading-briefing` skill with `mode=afternoon`. Follow `skills/morning-trading-briefing/SKILL.md` (afternoon mode section):
 
-## Status
+1. Load `config.yaml`
+2. Gather end-of-day data:
+   - Close prices for SPY/QQQ/DXY/10Y/oil/VIX (`stock-quote`)
+   - Today's P&L vs. BOD portfolio value (`ib-portfolio`)
+   - What moved & why (`market-news-analyst` for today's drivers)
+   - AMC earnings on holdings (`earnings-calendar` + `greeks` for implied move)
+   - Asia data on docket (`economic-calendar-fetcher` filtered to next 24hr Asia)
+   - Tomorrow's econ + Fed speakers + earnings
+3. Run `check_alerts.py` (closing-bell stop check)
+4. Assemble afternoon `brief_data.json`
+5. Render via `compose_brief.py`
+6. Write single all-day "Afternoon Brief" event to My Positions calendar (no macro/earnings events — those were created this morning)
+7. Upload markdown to Drive
+8. Print summary
 
-SCAFFOLD ONLY. See `/morning-brief` for status notes.
+## Dry-run example
+
+```bash
+python3 skills/morning-trading-briefing/scripts/compose_brief.py \
+  --input skills/morning-trading-briefing/scripts/examples/sample_afternoon.json \
+  --out-dir /tmp/test-brief --dry-run
+```
