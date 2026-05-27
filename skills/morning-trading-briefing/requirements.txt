@@ -1,0 +1,8 @@
+# Morning Trading Briefing — Python dependencies.
+# Install in the run environment (local + the scheduled Claude Code web env):
+#   pip install -r skills/morning-trading-briefing/requirements.txt
+#
+# Only the BI chart generator (scripts/generate_charts.py) needs these; the rest
+# of the pipeline is stdlib. If style.charts is false they are not required.
+matplotlib>=3.8
+pandas>=2.0

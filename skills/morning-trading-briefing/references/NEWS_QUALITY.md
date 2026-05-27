@@ -1,9 +1,11 @@
-# Geopolitical Wrap — Quality & Anti-Bias Contract
+# Sourced-News — Quality & Anti-Bias Contract
 
-The `geopolitical_summary` is the only brief section sourced from live `WebSearch`
-rather than a deterministic feed. It is therefore the highest bias/clickbait risk
-and runs on both automated and manual invocations. This document is the runtime
-contract; `check_geo_quality.py` enforces the mechanical parts.
+This contract covers every brief field sourced from live `WebSearch` rather than a
+deterministic feed: `geopolitical_summary`, `rates_news` (bonds/Treasury supply/Fed
+drivers), and `commodities_news` (energy/metals/ags). These are the highest
+bias/clickbait risk and run on both automated and manual invocations. This document
+is the runtime contract; `check_news_quality.py` enforces the mechanical parts and
+is applied identically to all three fields.
 
 ## Goal
 
@@ -61,25 +63,28 @@ See `../market-news-analyst/references/trusted_news_sources.md` for the full tie
 ```
 
 Examples (good):
-- `CONFIRMED ECB held the deposit rate at 3.00% (ECB statement) — EUR/USD +0.4% to 1.16, DXY -0.3%`
-- `REPORTED Hormuz transit restriction eased (Reuters, Bloomberg) — Brent -1.8% to $X`
+- geo: `CONFIRMED ECB held the deposit rate at 3.00% (ECB statement) — EUR/USD +0.4% to 1.16, DXY -0.3%`
+- geo: `REPORTED Hormuz transit restriction eased (Reuters, Bloomberg) — Brent -1.8% to $X`
+- bonds: `CONFIRMED Treasury 7Y auction tailed 1.2bp (US Treasury, Bloomberg) — 10Y +3bps to 4.49%`
+- commodities: `CONFIRMED EIA crude draw of 5.1M bbl (EIA, Reuters) — WTI +1.4%`
 
 Examples (rejected):
 - `Oil soared as fears gripped the market` → banned lexicon, no source, no number
 - `Brent likely heads to $120 next` → price prediction
-- `Tensions escalating dramatically` → no attribution, no market linkage, emotive
+- `OPEC+ surprise cut sends crude +4%` → quantified move, no source attribution
 
 ## Validator
 
-Run before publishing:
+Run before publishing — on each sourced field (`geopolitical_summary`,
+`rates_news`, `commodities_news`):
 
 ```bash
-python3 scripts/check_geo_quality.py --text "<geopolitical_summary>"
+python3 scripts/check_news_quality.py --text "<field text>"
 # or
-python3 scripts/check_geo_quality.py --file geo.txt --json
+python3 scripts/check_news_quality.py --file news.txt --json
 ```
 
-**Hard fails (exit 1, hold the geo block):**
+**Hard fails (exit 1, hold that field):**
 - banned-lexicon word present
 - a quantified market claim (%/$/bps) with no allowlisted source attribution
 
@@ -87,5 +92,5 @@ python3 scripts/check_geo_quality.py --file geo.txt --json
 - prediction language (will, likely, expect, poised to, target, forecast)
 - `unconfirmed` / `reportedly` / `rumored` markers
 
-On hard fail, omit the geo block rather than publish it — a missing wrap is
+On hard fail, omit that field rather than publish it — a missing wrap is
 better than a biased or unsourced one.

@@ -14,6 +14,27 @@ The orchestrator skill assembles a single JSON object and passes it through `com
   "date": "YYYY-MM-DD",
   "generated_at_et": "YYYY-MM-DD HH:MM ET",
 
+  // Optional one-line headline rendered above must-read (config.style.bottom_line).
+  "bottom_line": "...",
+
+  // Optional. Tickers to bold wherever they appear (config.watchlist + mega_caps +
+  // holdings). Powers the "bold your tickers" readability feature.
+  "watchlist": ["SPY", "QQQ", "NVDA"],
+
+  // Optional. From technicals.py risk_regime() — risk-on/off one-liner.
+  "risk_regime": {"label": "risk-on|neutral|risk-off", "score": 2, "reason": "..."},
+
+  // Optional. From technicals.py build_levels() — per-ticker key levels.
+  "key_levels": [
+    {"ticker": "SPY", "last": 590.0, "sma50": 575.0, "sma200": 540.0,
+     "support_20d": 580.0, "resistance_20d": 595.0,
+     "pct_vs_sma50": 2.6, "pct_vs_sma200": 9.3, "trend": "uptrend (above 50 & 200 DMA)"}
+  ],
+
+  // Optional. Mirrors config.filters so the deterministic scripts apply the same
+  // suppression the orchestrator intends. Omit → defaults (drop_minor_econ + voters_only).
+  "filters": {"drop_minor_econ": true, "voters_only": true},
+
   "snapshot": {
     "spy": "string",
     "spy_premarket": "+0.3%",
@@ -30,19 +51,39 @@ The orchestrator skill assembles a single JSON object and passes it through `com
       "name": "Consumer Price Index (CPI) YoY",
       "consensus": "3.1%",
       "prior": "3.0%",
+      "impact": "High",  // High|Medium|Low (from FMP) — drives tag, color, sort, filter
+
       // Following 5 fields come from econ-indicator-explainer
       // lookup_indicator.py --json "<name>" → use sections.what_it_is etc.
       "what": "...",
       "how_measured": "...",
       "why_matters": "...",
       "reaction_history": "...",
-      "watch_for_today": "..."
+      "watch_for_today": "...",
+      // Optional plain-English line at config.style.eli5_level (light|medium|heavy)
+      "eli5": "..."
     }
   ],
 
   "fed_speakers": [
     {"time_et": "10:00", "name": "Powell", "voter_status": "voter|non-voter|chair",
-     "lean": "hawkish|neutral|dovish", "topic": "..."}
+     "lean": "hawkish|neutral|dovish", "topic": "...",
+     "eli5": "..."}  // optional plain-English line (config.style.eli5_level)
+  ],
+
+  // Optional trend series for sparklines (inline) + charts (PNG). Lists of values,
+  // oldest→newest, length = config.style.chart_history_days of daily closes.
+  "trends": {
+    "spy": [1.0], "qqq": [1.0], "iwm": [1.0],
+    "us2y": [4.5], "us10y": [4.49], "us30y": [5.0], "vix": [17.0],
+    "wti": [92.0], "gold": [4511.0], "copper": [6.45]
+  },
+
+  // Optional chart manifest from generate_charts.py (build_charts → manifest).
+  // Each: {group, title, path, url?}. url set after Drive upload; markdown links it.
+  "charts": [
+    {"group": "indices", "title": "Index trend (rebased = 100)",
+     "path": "briefings/charts/2026-05-27/2026-05-27_indices.png", "url": "https://drive..."}
   ],
 
   "overnight": {
@@ -59,10 +100,18 @@ The orchestrator skill assembles a single JSON object and passes it through `com
     "so_what": "..."
   },
 
+  // Optional. Sourced bonds/rates news (Treasury supply/auctions, Fed drivers,
+  // credit). Same NEWS_QUALITY.md gate as geo — Tier-1 sources, corroborated,
+  // neutral lexicon. Renders in the Rates section + Market Updates digest.
+  "rates_news": "...",
+
   "commodities": [
     {"ticker": "WTI", "last": "72.45", "chg": "+0.5%", "catalyst": ""}
   ],
   "eia_opec_today": "OPEC+ JMMC tomorrow; EIA Wednesday 10:30 ET",
+  // Optional. Sourced commodities news (OPEC+/EIA, supply disruptions, metals/ags).
+  // Same NEWS_QUALITY.md gate. Renders in the Commodities section + digest.
+  "commodities_news": "...",
 
   "fx": {
     "dxy": "...", "dxy_chg": "...",
@@ -132,10 +181,13 @@ skips that calendar:
 
 | Calendar key | Receives |
 |---|---|
-| `macro_events` | one timed event per `econ_releases` + `fed_speakers` |
-| `earnings` | one timed event per `earnings_today` entry (deduped, my_positions wins) |
+| `macro_events` | one timed event per `econ_releases` (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color) + voter `fed_speakers` |
+| `earnings` | ONE all-day **ranked digest** — your positions first, then by implied move (deduped, my_positions wins) |
 | `my_positions` | all-day summary event carrying the full rendered brief |
-| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + energy catalysts + pre-market movers + `geopolitical_summary` |
+| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + `trends` sparklines + energy catalysts + pre-market movers + `rates_news` + `commodities_news` + `geopolitical_summary` |
+
+> Calendar event bodies are text-only: sparklines (`trends`) render in them, but the
+> PNG `charts` and per-event `eli5` lines appear only in the markdown / Drive archive.
 
 ## Afternoon shape
 

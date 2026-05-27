@@ -16,9 +16,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
+
+from event_filters import filter_releases, impact_rank, impact_tag
+from sparkline import spark_label
+
+
+def _bold_tickers(text: str, tickers: list[str]) -> str:
+    """Bold whole-word ticker occurrences so position-relevant items pop."""
+    if not text or not tickers:
+        return text
+    for t in sorted({t for t in tickers if t}, key=len, reverse=True):
+        text = re.sub(rf"(?<![\w*]){re.escape(t)}(?![\w*])", f"**{t}**", text)
+    return text
 
 
 def _get(d: dict, *keys: str, default: Any = "—") -> Any:
@@ -54,22 +67,40 @@ def render_morning(d: dict) -> str:
     )
     lines.append("")
 
+    tickers = d.get("watchlist", [])
+
+    if d.get("bottom_line"):
+        lines.append(f"**Bottom line:** {_bold_tickers(d['bottom_line'], tickers)}")
+        lines.append("")
+
+    regime = d.get("risk_regime")
+    if regime and regime.get("label"):
+        lines.append(f"**Regime:** {regime['label']} — {regime.get('reason', '')}")
+        lines.append("")
+
     must = d.get("must_read", [])
     if must:
         lines.append("## Must-read today")
         for i, item in enumerate(must, 1):
-            lines.append(f"{i}. {item}")
+            lines.append(f"{i}. {_bold_tickers(item, tickers)}")
         lines.append("")
 
     lines.append("---\n")
     lines.append("## Macro day-ahead\n")
 
-    releases = d.get("econ_releases", [])
+    flt = d.get("filters", {})
+    releases = filter_releases(
+        d.get("econ_releases", []), drop_minor=flt.get("drop_minor_econ", True)
+    )
     if releases:
         lines.append("### Economic releases\n")
+        if not any(impact_rank(r.get("impact")) >= 2 for r in releases):
+            lines.append("_Light macro day — no high-impact releases scheduled._\n")
         for r in releases:
+            tag = impact_tag(r.get("impact"))
+            tag_str = f"{tag} " if tag else ""
             lines.append(
-                f"**{r.get('time_et', '?')} ET — {r.get('name', '?')}** "
+                f"**{tag_str}{r.get('time_et', '?')} ET — {r.get('name', '?')}** "
                 f"*(consensus {r.get('consensus', 'n/a')} | "
                 f"prior {r.get('prior', 'n/a')})*\n"
             )
@@ -85,6 +116,8 @@ def render_morning(d: dict) -> str:
             watch = r.get("watch_for_today")
             if watch:
                 lines.append(f"→ *Watch:* {watch}\n")
+            if r.get("eli5"):
+                lines.append(f"→ *In plain English:* {r['eli5']}\n")
         lines.append("")
 
     speakers = d.get("fed_speakers", [])
@@ -96,6 +129,8 @@ def render_morning(d: dict) -> str:
                 f"({s.get('voter_status', '?')}, recent lean: {s.get('lean', '?')}) — "
                 f"{s.get('topic', '')}"
             )
+            if s.get("eli5"):
+                lines.append(f"  → *In plain English:* {s['eli5']}")
         lines.append("")
 
     on = d.get("overnight", {})
@@ -126,9 +161,37 @@ def render_morning(d: dict) -> str:
             f"- Fed funds futures imply {_get(rates, 'ff_implied_path')} through "
             f"{_get(rates, 'ff_horizon')}"
         )
+        trends = d.get("trends", {})
+        for key, lbl in [("us2y", "2Y"), ("us10y", "10Y"), ("us30y", "30Y")]:
+            if trends.get(key):
+                sl = spark_label(lbl, trends[key], unit="%")
+                if sl:
+                    lines.append(f"- Trend: {sl}")
         if rates.get("so_what"):
             lines.append(f"→ *So what:* {rates['so_what']}")
+        if d.get("rates_news"):
+            lines.append(f"→ *News:* {d['rates_news']}")
         lines.append("")
+
+    levels = d.get("key_levels", [])
+    if levels:
+        lines.append("### Key levels")
+        lines.append(
+            _table(
+                ["Ticker", "Last", "50DMA", "200DMA", "20d S/R", "Trend"],
+                [
+                    [
+                        lv.get("ticker", "?"),
+                        lv.get("last", "—"),
+                        lv.get("sma50", "—"),
+                        lv.get("sma200", "—"),
+                        f"{lv.get('support_20d', '—')}–{lv.get('resistance_20d', '—')}",
+                        lv.get("trend", ""),
+                    ]
+                    for lv in levels
+                ],
+            )
+        )
 
     comm = d.get("commodities", [])
     if comm:
@@ -141,6 +204,8 @@ def render_morning(d: dict) -> str:
         )
         if d.get("eia_opec_today"):
             lines.append(f"*EIA/OPEC days flagged: {d['eia_opec_today']}*\n")
+        if d.get("commodities_news"):
+            lines.append(f"→ *News:* {d['commodities_news']}\n")
 
     fx = d.get("fx", {})
     if fx:
@@ -169,6 +234,15 @@ def render_morning(d: dict) -> str:
         )
         if d.get("rotation_read"):
             lines.append(f"→ *Rotation read:* {d['rotation_read']}\n")
+
+    charts = d.get("charts", [])
+    if charts:
+        lines.append("### Trend charts")
+        for c in charts:
+            title = c.get("title", c.get("group", "chart"))
+            ref = c.get("url") or c.get("path", "")
+            lines.append(f"- [{title}]({ref})")
+        lines.append("")
 
     movers = d.get("premarket_movers", [])
     if movers:

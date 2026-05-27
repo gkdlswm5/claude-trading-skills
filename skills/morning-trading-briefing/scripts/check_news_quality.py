@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Validate the geopolitical wrap against the anti-bias contract.
+"""Validate any sourced-news wrap against the anti-bias contract.
 
-Enforces the mechanical parts of references/GEO_WRAP_QUALITY.md:
+Applies to every WebSearch-sourced field in the brief — geopolitical_summary,
+rates_news, commodities_news. Enforces the mechanical parts of
+references/NEWS_QUALITY.md:
   - HARD FAIL: banned emotive/judgment lexicon present
   - HARD FAIL: a quantified market claim (%/$/bps) with no allowlisted source
   - WARN: prediction language (will, likely, expect, target, ...)
   - WARN: unconfirmed / reportedly / rumored single-source markers
 
 Usage:
-    check_geo_quality.py --text "CONFIRMED ECB held ... — EUR/USD +0.4%"
-    check_geo_quality.py --file geo.txt [--json]
+    check_news_quality.py --text "CONFIRMED ECB held ... — EUR/USD +0.4%"
+    check_news_quality.py --file news.txt [--json]
 
-Exit code 1 on any hard fail (caller should omit the geo block), 0 otherwise.
+Exit code 1 on any hard fail (caller should omit the wrap), 0 otherwise.
 """
 from __future__ import annotations
 
@@ -40,13 +42,20 @@ PREDICTION_TERMS = [
 # Single-source hedges → corroboration not met.
 UNCONFIRMED_MARKERS = ["unconfirmed", "reportedly", "rumored", "rumour", "sources say"]
 
-# Allowlisted source tokens (Tier-1 + primary). Lowercased substring match.
+# Allowlisted source names (Tier-1 + primary), matched as whole words.
 SOURCE_ALLOWLIST = [
-    "reuters", "associated press", "ap)", "ap,", "(ap", "bloomberg",
-    "financial times", "ft)", "ft,", "(ft", "wall street journal", "wsj",
-    "federal reserve", "fed)", "fed,", "(fed", "ecb", "boj", "pboc",
-    "bank of england", "boe", "sec", "eia", "opec", "treasury", "white house",
+    "reuters", "associated press", "ap", "bloomberg", "financial times", "ft",
+    "wall street journal", "wsj", "federal reserve", "fed", "ecb", "boj", "pboc",
+    "bank of england", "boe", "sec", "eia", "opec", "us treasury", "treasury",
+    "white house",
 ]
+
+# Attribution must sit in a citation position, not merely be mentioned. We accept
+# a source inside parentheses — "(Reuters, Bloomberg)" — or right after a cue word.
+# This stops a market actor that is also a source ("OPEC+ cut crude +4%") from
+# being mistaken for a citation.
+_PAREN = re.compile(r"\(([^)]*)\)")
+ATTRIB_CUES = ["per ", "via ", "according to ", "reported by ", "cited ", "said "]
 
 # A clause carries a quantified market claim if it has a %, $ figure, or bps.
 _QUANT = re.compile(r"(?<![\w])([+-]?\d+(?:\.\d+)?\s?%|\$\s?\d|\d+\s?bps|\d+\s?bp\b)")
@@ -58,12 +67,24 @@ def _split_items(text: str) -> list[str]:
     return [seg.strip(" -•*\t") for seg in raw if seg.strip(" -•*\t")]
 
 
+def _src_in(text: str) -> bool:
+    return any(re.search(rf"\b{re.escape(tok)}\b", text) for tok in SOURCE_ALLOWLIST)
+
+
 def _has_source(segment: str) -> bool:
+    """True only if an allowlisted source appears in a citation position:
+    inside parentheses, or within ~60 chars after an attribution cue word."""
     low = segment.lower()
-    return any(tok in low for tok in SOURCE_ALLOWLIST)
+    if any(_src_in(inside) for inside in _PAREN.findall(low)):
+        return True
+    for cue in ATTRIB_CUES:
+        i = low.find(cue)
+        if i != -1 and _src_in(low[i : i + 60]):
+            return True
+    return False
 
 
-def check_geo_quality(text: str) -> dict:
+def check_news_quality(text: str) -> dict:
     text = text or ""
     low = text.lower()
     hard_fails: list[str] = []
@@ -100,7 +121,7 @@ def main() -> int:
     args = ap.parse_args()
 
     text = args.text if args.text is not None else open(args.file, encoding="utf-8").read()
-    result = check_geo_quality(text)
+    result = check_news_quality(text)
 
     if args.json:
         print(json.dumps(result, indent=2))

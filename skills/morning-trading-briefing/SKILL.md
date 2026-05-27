@@ -67,30 +67,34 @@ Check `integration.ib_integration`. The procedure below is for the full IB-integ
 | Insider buying | `insider-trading` (watchlist + holdings) | no (uses watchlist) |
 | Fresh setups | `scanner-bullish` + `scanner-pmcc` (top 3 each) | no |
 | Geopolitical wrap | `WebSearch` constrained to trusted sources (see rule below) → `geopolitical_summary` | no |
+| Bonds/rates news | `WebSearch` (Treasury supply/auctions, Fed drivers, credit) → `rates_news` | no |
+| Commodities news | `WebSearch` (OPEC+/EIA, supply disruptions, metals/ags) → `commodities_news` | no |
+| Trend history | `stock-quote` / Yahoo `range=3mo` daily closes for index/rates/commodity tickers → `trends` + chart series (when `style.charts`/`style.sparklines`) | no |
 
-**Geopolitical wrap — source-quality rule (avoid clickbait / bad data):** apply the
+**Sourced-news rule (avoid clickbait / bad data) — applies to all three news
+fields** (`geopolitical_summary`, `rates_news`, `commodities_news`): apply the
 `market-news-analyst/references/trusted_news_sources.md` tiering. Use **Tier-1
 sources only** for facts — Reuters, AP, Bloomberg, FT, WSJ, and primary sources
-(central-bank statements, official gov releases, filings). A claim enters the wrap
-only with **≥2 independent Tier-1 corroborations**; single-source items are dropped
-or explicitly flagged "unconfirmed." State **facts and the cross-asset read**
-("Brent +2% on Hormuz headline"), never punditry or price predictions. Exclude
-social/aggregator/opinion outlets. This is the least reproducible section (live
-search), so keep it tight — 2-4 sentences. Full contract:
-`references/GEO_WRAP_QUALITY.md`.
+(central-bank statements, Treasury/EIA/OPEC releases, filings). A claim enters a
+wrap only with **≥2 independent Tier-1 corroborations**; single-source items are
+dropped or explicitly flagged "unconfirmed." State **facts and the cross-asset
+read** ("Brent +2% on Hormuz headline"), never punditry or price predictions.
+Exclude social/aggregator/opinion outlets. These are the least reproducible
+sections (live search), so keep each tight — 2-4 sentences. Full contract:
+`references/NEWS_QUALITY.md`.
 
-**Validate before publishing.** Run the deterministic checker on the assembled
-`geopolitical_summary`:
+**Validate before publishing.** Run the deterministic checker on **each** assembled
+news field:
 
 ```bash
-python3 skills/morning-trading-briefing/scripts/check_geo_quality.py --text "<geopolitical_summary>" --json
+python3 skills/morning-trading-briefing/scripts/check_news_quality.py --text "<field text>" --json
 ```
 
 Hard fail (exit 1) = banned emotive lexicon, or a quantified market claim with no
-allowlisted source. On hard fail, **omit the geo block** rather than publish it —
+allowlisted source. On hard fail, **omit that field** rather than publish it —
 a missing wrap beats a biased/unsourced one. Warnings (prediction language,
 single-source markers) are surfaced for a quick manual look but don't block.
-This gate is what makes the geo wrap safe to run unattended on the daily auto-run.
+This gate is what makes the news wraps safe to run unattended on the daily auto-run.
 
 ### Step 2 — Enrich econ events with explainer cards
 
@@ -102,6 +106,18 @@ python3 skills/econ-indicator-explainer/scripts/lookup_indicator.py --json "<eve
 
 - On match: parse JSON `.sections` → populate `what`, `how_measured`, `why_matters`, `reaction_history`, `watch_for_today` on the brief_data econ_releases entry.
 - On no match (exit 2): include the event with only the FMP-supplied fields, and append the unmapped name to `skills/morning-trading-briefing/state/unmapped_indicators.log` so the user can add a card later.
+
+**ELI5 plain-English line** (per econ event + Fed speaker, `eli5` field). Write it at
+the level set by `config.style.eli5_level` — the user picks one:
+
+| Level | Audience | Style | Example (ECB) |
+|---|---|---|---|
+| `off` | — | no eli5 line | — |
+| `light` | knows the basics | no jargon, **one sentence** | "ECB sets eurozone rates; leaning toward cuts weakens the euro and firms the dollar — a mild headwind for US tech that earns abroad." |
+| `medium` | beginner | defines the institution + cause→effect, **2-3 sentences** | "The ECB is Europe's central bank — it sets how expensive borrowing is. Lower rates make the euro less attractive, so the dollar rises. A stronger dollar trims US tech's overseas sales; DAX/Stoxx react first." |
+| `heavy` | true beginner | analogies, everything defined, **very short sentences** | "Think of the ECB as Europe's 'money boss.' Cheaper borrowing → people want euros a bit less → the dollar looks stronger. A strong dollar is like a small tax on US firms selling abroad. Green DAX/Stoxx = the news landed well." |
+
+Keep the same factual content as the technical explanation — just re-leveled. Never add a prediction or a trade call in the eli5 line.
 
 ### Step 3 — Run alert checker (IB only)
 
@@ -123,12 +139,23 @@ Merge `stop_alerts`, `short_leg_alerts`, `upcoming_earnings` into the brief_data
 
 Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate:
 
-- `snapshot`, `econ_releases`, `fed_speakers`, `overnight`, `rates`, `commodities`, `eia_opec_today`
+- `snapshot`, `econ_releases` (set `impact` High/Medium/Low per event — drives tag/color/sort/filter), `fed_speakers`, `overnight`, `rates`, `rates_news`, `commodities`, `eia_opec_today`, `commodities_news`
 - `fx`, `sector_etfs`, `rotation_read`, `premarket_movers`
 - `earnings_today` (split mega-caps vs. my_positions — `my_positions` empty when no IB)
 - `my_positions` (omit entirely when no IB, or just populate `holding_events` with watchlist news)
 - `opportunities`
 - `geopolitical_summary` (optional; from the Step 1 geo wrap — Tier-1 sourced, corroborated. Feeds the markdown "Geopolitical" section + the Market Updates digest.)
+- `bottom_line` (one tight headline, even shorter than must-read; `config.style.bottom_line`)
+- `filters` (mirror `config.filters` so the scripts apply the same suppression: `{drop_minor_econ, voters_only}`)
+- `watchlist` (config.watchlist + mega_caps + holdings — bolded in must-read/bottom-line when `config.style.bold_tickers`)
+- `key_levels` + `risk_regime` (from `technicals.py` — see Step 6)
+
+**Noise filtering (config.filters):** minor econ (Low-impact, or denylisted: MBA
+mortgage, Redbook, bills, regional Fed surveys) and non-voter / ceremonial Fed
+speakers are suppressed — *unless notable* (the only data of the day is kept via the
+override in `event_filters.filter_releases`). `event_filters.py` is the shared,
+tested helper; render + compose both apply it. Set `impact` on every econ event so
+tags/colors/sort work.
 
 For each section that ends with a `so_what` field (rates, fx, sector rotation): write one sentence tying the data to the user's actual positions. This is the discipline that turns the brief from a data dump into actionable signal.
 
@@ -145,7 +172,41 @@ In no-IB mode, replace position-specific references with watchlist references:
 
 Tight, actionable, ties to holdings or watchlist tickers. If you can't write 3 items that meet this bar, write fewer — don't fluff.
 
-### Step 6 — Render + emit events.json
+### Step 6 — BI charts + sparklines, then render + emit events.json
+
+**Trend data (when `style.charts` or `style.sparklines`):** in Step 1 also fetch
+`style.chart_history_days` of daily closes (Yahoo `range=3mo`) for the index /
+rates / commodity tickers. Put the per-metric value lists on brief_data `trends`
+(oldest→newest) — these drive the inline sparklines (digest + Rates section).
+
+**PNG charts (when `style.charts: true`)** — needs `matplotlib`/`pandas`
+(`pip install -r skills/morning-trading-briefing/requirements.txt`). Build a series
+JSON (`{date, series:{name:{group,points:[{date,close}]}}, sectors:{}}`) and run:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/generate_charts.py \
+  --data /tmp/series.json --out-dir briefings/charts/YYYY-MM-DD/
+```
+
+It writes one PNG per group + `charts_manifest.json`. After uploading the PNGs in
+Step 8, set each manifest entry's `url` and put the manifest on brief_data `charts`
+so the markdown links them. (Calendar entries are text-only — charts live in the
+markdown/Drive; sparklines cover the calendar.)
+
+**Technical levels + risk regime (`style.technical_levels` / `style.risk_regime`):**
+run `technicals.py` on the same history (plus VIX + sector breadth %) to compute
+per-index key levels (50/200 DMA, 20-day support/resistance, trend) and a risk-on/off
+one-liner:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/technicals.py --data /tmp/series.json
+# series.json: {"series": {"SPY": [..closes..], ...}, "vix": 17.0, "breadth_pct": 70}
+```
+
+Put the result on brief_data `key_levels` + `risk_regime`. The renderer shows a Key
+levels table and a "Regime:" line; the digest carries the regime one-liner.
+
+**Render + events:**
 
 ```bash
 python3 skills/morning-trading-briefing/scripts/compose_brief.py \
@@ -189,14 +250,20 @@ Procedure per event:
 If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
 
 Calendar routing (each calendar is optional — a missing `config.yaml` key skips it):
-- **Macro Events** — timed events for econ releases + Fed speakers
-- **Earnings** — timed events for earnings (deduped)
+- **Macro Events** — timed econ events (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color: red/banana/graphite) + voter Fed speakers
+- **Earnings** — ONE all-day **ranked digest** ("Earnings — N reporting"), your positions first then by implied move
 - **My Positions** — all-day summary carrying the full rendered brief
 - **Market Updates** — all-day **digest**: snapshot + must-reads + overnight + energy catalysts + pre-market movers + geopolitical wrap (the "soft / narrative context" lane; emitted only when `market_updates` is set)
 
 ### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
 
 Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Base filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
+
+**Chart PNGs (when `style.charts`):** upload each PNG from the Step 6 manifest via
+`create_file` (base64 content, `contentMimeType: image/png`, same `parentId`). Take
+the returned file link, set it as the manifest entry's `url`, and ensure brief_data
+`charts` carries the manifest so the markdown links resolve. Re-run versioning works
+the same way as the `.md` (charts live under a dated `charts/YYYY-MM-DD/` subfolder).
 
 **Re-run handling (Drive can't update file content via MCP).** The Drive MCP
 exposes `create_file` / `search_files` but no update-content or delete tool, so a

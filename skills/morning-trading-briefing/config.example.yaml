@@ -138,6 +138,30 @@ style:
   show_reaction_history: true  # "hot prints historically sell bonds, lift USD"
   show_so_what_per_section: true   # each section ends with "→ implication for your book"
   max_brief_length_words: 1500
+  # ELI5 plain-English line per econ event / Fed speaker. PICK YOUR LEVEL:
+  #   off    — no plain-English line
+  #   light  — no jargon, assumes basics, one sentence
+  #   medium — defines the institution + cause→effect chain, 2-3 sentences
+  #   heavy  — true ELI5: analogies, everything defined, very short sentences
+  eli5_level: medium
+  # BI trend visuals
+  charts: true                 # matplotlib PNG dashboard → Drive + markdown (needs matplotlib/pandas)
+  sparklines: true             # unicode trend lines inline (calendar digest + markdown); zero-dep
+  chart_history_days: 90       # lookback for trend series (Yahoo)
+  impact_tags: true            # [HIGH]/[MED]/[LOW] prefix + calendar color-coding + sort by impact
+  bottom_line: true            # one-line headline at the very top
+  quiet_day_note: true         # say "Light macro day" instead of padding with filler
+  technical_levels: true       # per-index 50/200 DMA, 20d support/resistance, trend (from history)
+  risk_regime: true            # risk-on/off one-liner from SPY vs MAs + VIX + breadth
+  bold_tickers: true           # bold watchlist/holdings tickers in must-read + bottom line
+
+# ---- Noise filters ----
+# Minor items are suppressed UNLESS notable (only data of the day / surprise / coupon
+# auction / voter on-topic). All reversible — set false to keep everything.
+filters:
+  drop_minor_econ: true        # drop Low-impact + denylisted econ (MBA, Redbook, bills, regional Fed)
+  voters_only: true            # Fed speakers: keep voters with a real topic; drop ceremonial/odd-hour
+  # minor_name_patterns: []    # optional extra denylist substrings (merged with defaults)
 
 # ---- Noise log ----
 # After each briefing, jot one line. Once a week prune what doesn't matter.
