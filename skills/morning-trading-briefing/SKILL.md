@@ -66,6 +66,17 @@ Check `integration.ib_integration`. The procedure below is for the full IB-integ
 | Unusual flow | `whale-hunting` per holding/watchlist ticker | no (uses watchlist) |
 | Insider buying | `insider-trading` (watchlist + holdings) | no (uses watchlist) |
 | Fresh setups | `scanner-bullish` + `scanner-pmcc` (top 3 each) | no |
+| Geopolitical wrap | `WebSearch` constrained to trusted sources (see rule below) → `geopolitical_summary` | no |
+
+**Geopolitical wrap — source-quality rule (avoid clickbait / bad data):** apply the
+`market-news-analyst/references/trusted_news_sources.md` tiering. Use **Tier-1
+sources only** for facts — Reuters, AP, Bloomberg, FT, WSJ, and primary sources
+(central-bank statements, official gov releases, filings). A claim enters the wrap
+only with **≥2 independent Tier-1 corroborations**; single-source items are dropped
+or explicitly flagged "unconfirmed." State **facts and the cross-asset read**
+("Brent +2% on Hormuz headline"), never punditry or price predictions. Exclude
+social/aggregator/opinion outlets. This is the least reproducible section (live
+search), so keep it tight — 2-4 sentences.
 
 ### Step 2 — Enrich econ events with explainer cards
 
@@ -103,6 +114,7 @@ Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate
 - `earnings_today` (split mega-caps vs. my_positions — `my_positions` empty when no IB)
 - `my_positions` (omit entirely when no IB, or just populate `holding_events` with watchlist news)
 - `opportunities`
+- `geopolitical_summary` (optional; from the Step 1 geo wrap — Tier-1 sourced, corroborated. Feeds the markdown "Geopolitical" section + the Market Updates digest.)
 
 For each section that ends with a `so_what` field (rates, fx, sector rotation): write one sentence tying the data to the user's actual positions. This is the discipline that turns the brief from a data dump into actionable signal.
 
@@ -148,6 +160,12 @@ Iterate `events.json` and call the Calendar MCP `create_event` for each. Map fie
 | `allDay` | `allDay` (only set on summary event) |
 
 If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
+
+Calendar routing (each calendar is optional — a missing `config.yaml` key skips it):
+- **Macro Events** — timed events for econ releases + Fed speakers
+- **Earnings** — timed events for earnings (deduped)
+- **My Positions** — all-day summary carrying the full rendered brief
+- **Market Updates** — all-day **digest**: snapshot + must-reads + overnight + energy catalysts + pre-market movers + geopolitical wrap (the "soft / narrative context" lane; emitted only when `market_updates` is set)
 
 ### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
 

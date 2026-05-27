@@ -179,6 +179,12 @@ def render_morning(d: dict) -> str:
             )
         lines.append("")
 
+    geo = d.get("geopolitical_summary")
+    if geo:
+        lines.append("### Geopolitical")
+        lines.append(geo)
+        lines.append("")
+
     earn = d.get("earnings_today", {})
     if earn.get("megacaps") or earn.get("my_positions"):
         lines.append("---\n")

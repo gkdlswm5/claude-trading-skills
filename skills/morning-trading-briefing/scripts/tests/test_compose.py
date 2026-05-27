@@ -52,18 +52,47 @@ def test_full_config_generates_events():
             "  macro_events: macro@x.com\n"
             "  earnings: earn@x.com\n"
             "  my_positions: pos@x.com\n"
+            "  market_updates: mu@x.com\n"
         )
         cfg = f.name
     out = _compose(EXAMPLES / "sample_morning.json", config=cfg)
     events = json.loads(next(out.glob("*.events.json")).read_text())
     cals = {e["calendarId"] for e in events}
-    assert cals == {"macro@x.com", "earn@x.com", "pos@x.com"}
+    assert cals == {"macro@x.com", "earn@x.com", "pos@x.com", "mu@x.com"}
 
     # Confirm dedup: NVDA appears in megacaps AND my_positions but only one event.
     nvda_events = [e for e in events if "NVDA" in e["summary"]]
     assert len(nvda_events) == 1
     # And the dedup kept the my_positions version (has "Your exposure")
     assert "Your exposure" in nvda_events[0]["description"]
+
+
+def test_market_updates_digest():
+    """market_updates calendar gets exactly one all-day digest event with the
+    snapshot + must-reads bundled into the body."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write("calendars:\n  market_updates: mu@x.com\n")
+        cfg = f.name
+    out = _compose(EXAMPLES / "sample_morning.json", config=cfg)
+    events = json.loads(next(out.glob("*.events.json")).read_text())
+    mu = [e for e in events if e["calendarId"] == "mu@x.com"]
+    assert len(mu) == 1
+    ev = mu[0]
+    assert ev["summary"] == "Market Updates"
+    assert ev["allDay"] is True
+    assert ev["startTime"].endswith("T00:00:00Z")
+    assert "# Market Updates" in ev["description"]
+    assert "Snapshot:" in ev["description"]
+
+
+def test_market_updates_skipped_without_id():
+    """No market_updates key → no digest event (3-calendar config unaffected)."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write("calendars:\n  macro_events: macro@x.com\n")
+        cfg = f.name
+    out = _compose(EXAMPLES / "sample_morning.json", config=cfg)
+    events = json.loads(next(out.glob("*.events.json")).read_text())
+    assert all(e["summary"] != "Market Updates" for e in events)
 
 
 def test_afternoon_compose():
