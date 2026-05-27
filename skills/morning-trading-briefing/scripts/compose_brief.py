@@ -24,6 +24,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from render_brief import render
+from sparkline import spark_label
 
 DEFAULT_TZ = "America/New_York"
 
@@ -105,6 +106,17 @@ def _market_updates_digest(data: dict) -> str:
             for m in movers
         )
         parts.append(f"\n**Pre-market movers:** {rendered}")
+
+    trends = data.get("trends", {})
+    if trends:
+        spark_bits = []
+        for key, lbl, unit in [("spy", "SPY", ""), ("qqq", "QQQ", ""), ("us10y", "10Y", "%"), ("vix", "VIX", "")]:
+            if trends.get(key):
+                sl = spark_label(lbl, trends[key], unit=unit)
+                if sl:
+                    spark_bits.append(sl)
+        if spark_bits:
+            parts.append("\n**Trends:** " + "  ·  ".join(spark_bits))
 
     news_bits = []
     if data.get("rates_news"):

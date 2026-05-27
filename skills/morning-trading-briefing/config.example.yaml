@@ -138,6 +138,16 @@ style:
   show_reaction_history: true  # "hot prints historically sell bonds, lift USD"
   show_so_what_per_section: true   # each section ends with "→ implication for your book"
   max_brief_length_words: 1500
+  # ELI5 plain-English line per econ event / Fed speaker. PICK YOUR LEVEL:
+  #   off    — no plain-English line
+  #   light  — no jargon, assumes basics, one sentence
+  #   medium — defines the institution + cause→effect chain, 2-3 sentences
+  #   heavy  — true ELI5: analogies, everything defined, very short sentences
+  eli5_level: medium
+  # BI trend visuals
+  charts: true                 # matplotlib PNG dashboard → Drive + markdown (needs matplotlib/pandas)
+  sparklines: true             # unicode trend lines inline (calendar digest + markdown); zero-dep
+  chart_history_days: 90       # lookback for trend series (Yahoo)
 
 # ---- Noise log ----
 # After each briefing, jot one line. Once a week prune what doesn't matter.

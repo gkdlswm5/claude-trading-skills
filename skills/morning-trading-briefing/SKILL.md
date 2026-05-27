@@ -69,6 +69,7 @@ Check `integration.ib_integration`. The procedure below is for the full IB-integ
 | Geopolitical wrap | `WebSearch` constrained to trusted sources (see rule below) → `geopolitical_summary` | no |
 | Bonds/rates news | `WebSearch` (Treasury supply/auctions, Fed drivers, credit) → `rates_news` | no |
 | Commodities news | `WebSearch` (OPEC+/EIA, supply disruptions, metals/ags) → `commodities_news` | no |
+| Trend history | `stock-quote` / Yahoo `range=3mo` daily closes for index/rates/commodity tickers → `trends` + chart series (when `style.charts`/`style.sparklines`) | no |
 
 **Sourced-news rule (avoid clickbait / bad data) — applies to all three news
 fields** (`geopolitical_summary`, `rates_news`, `commodities_news`): apply the
@@ -105,6 +106,18 @@ python3 skills/econ-indicator-explainer/scripts/lookup_indicator.py --json "<eve
 
 - On match: parse JSON `.sections` → populate `what`, `how_measured`, `why_matters`, `reaction_history`, `watch_for_today` on the brief_data econ_releases entry.
 - On no match (exit 2): include the event with only the FMP-supplied fields, and append the unmapped name to `skills/morning-trading-briefing/state/unmapped_indicators.log` so the user can add a card later.
+
+**ELI5 plain-English line** (per econ event + Fed speaker, `eli5` field). Write it at
+the level set by `config.style.eli5_level` — the user picks one:
+
+| Level | Audience | Style | Example (ECB) |
+|---|---|---|---|
+| `off` | — | no eli5 line | — |
+| `light` | knows the basics | no jargon, **one sentence** | "ECB sets eurozone rates; leaning toward cuts weakens the euro and firms the dollar — a mild headwind for US tech that earns abroad." |
+| `medium` | beginner | defines the institution + cause→effect, **2-3 sentences** | "The ECB is Europe's central bank — it sets how expensive borrowing is. Lower rates make the euro less attractive, so the dollar rises. A stronger dollar trims US tech's overseas sales; DAX/Stoxx react first." |
+| `heavy` | true beginner | analogies, everything defined, **very short sentences** | "Think of the ECB as Europe's 'money boss.' Cheaper borrowing → people want euros a bit less → the dollar looks stronger. A strong dollar is like a small tax on US firms selling abroad. Green DAX/Stoxx = the news landed well." |
+
+Keep the same factual content as the technical explanation — just re-leveled. Never add a prediction or a trade call in the eli5 line.
 
 ### Step 3 — Run alert checker (IB only)
 
@@ -148,7 +161,28 @@ In no-IB mode, replace position-specific references with watchlist references:
 
 Tight, actionable, ties to holdings or watchlist tickers. If you can't write 3 items that meet this bar, write fewer — don't fluff.
 
-### Step 6 — Render + emit events.json
+### Step 6 — BI charts + sparklines, then render + emit events.json
+
+**Trend data (when `style.charts` or `style.sparklines`):** in Step 1 also fetch
+`style.chart_history_days` of daily closes (Yahoo `range=3mo`) for the index /
+rates / commodity tickers. Put the per-metric value lists on brief_data `trends`
+(oldest→newest) — these drive the inline sparklines (digest + Rates section).
+
+**PNG charts (when `style.charts: true`)** — needs `matplotlib`/`pandas`
+(`pip install -r skills/morning-trading-briefing/requirements.txt`). Build a series
+JSON (`{date, series:{name:{group,points:[{date,close}]}}, sectors:{}}`) and run:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/generate_charts.py \
+  --data /tmp/series.json --out-dir briefings/charts/YYYY-MM-DD/
+```
+
+It writes one PNG per group + `charts_manifest.json`. After uploading the PNGs in
+Step 8, set each manifest entry's `url` and put the manifest on brief_data `charts`
+so the markdown links them. (Calendar entries are text-only — charts live in the
+markdown/Drive; sparklines cover the calendar.)
+
+**Render + events:**
 
 ```bash
 python3 skills/morning-trading-briefing/scripts/compose_brief.py \
@@ -200,6 +234,12 @@ Calendar routing (each calendar is optional — a missing `config.yaml` key skip
 ### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
 
 Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Base filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
+
+**Chart PNGs (when `style.charts`):** upload each PNG from the Step 6 manifest via
+`create_file` (base64 content, `contentMimeType: image/png`, same `parentId`). Take
+the returned file link, set it as the manifest entry's `url`, and ensure brief_data
+`charts` carries the manifest so the markdown links resolve. Re-run versioning works
+the same way as the `.md` (charts live under a dated `charts/YYYY-MM-DD/` subfolder).
 
 **Re-run handling (Drive can't update file content via MCP).** The Drive MCP
 exposes `create_file` / `search_files` but no update-content or delete tool, so a

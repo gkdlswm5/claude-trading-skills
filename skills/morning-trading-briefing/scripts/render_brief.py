@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sparkline import spark_label
+
 
 def _get(d: dict, *keys: str, default: Any = "—") -> Any:
     cur: Any = d
@@ -85,6 +87,8 @@ def render_morning(d: dict) -> str:
             watch = r.get("watch_for_today")
             if watch:
                 lines.append(f"→ *Watch:* {watch}\n")
+            if r.get("eli5"):
+                lines.append(f"→ *In plain English:* {r['eli5']}\n")
         lines.append("")
 
     speakers = d.get("fed_speakers", [])
@@ -96,6 +100,8 @@ def render_morning(d: dict) -> str:
                 f"({s.get('voter_status', '?')}, recent lean: {s.get('lean', '?')}) — "
                 f"{s.get('topic', '')}"
             )
+            if s.get("eli5"):
+                lines.append(f"  → *In plain English:* {s['eli5']}")
         lines.append("")
 
     on = d.get("overnight", {})
@@ -126,6 +132,12 @@ def render_morning(d: dict) -> str:
             f"- Fed funds futures imply {_get(rates, 'ff_implied_path')} through "
             f"{_get(rates, 'ff_horizon')}"
         )
+        trends = d.get("trends", {})
+        for key, lbl in [("us2y", "2Y"), ("us10y", "10Y"), ("us30y", "30Y")]:
+            if trends.get(key):
+                sl = spark_label(lbl, trends[key], unit="%")
+                if sl:
+                    lines.append(f"- Trend: {sl}")
         if rates.get("so_what"):
             lines.append(f"→ *So what:* {rates['so_what']}")
         if d.get("rates_news"):
@@ -173,6 +185,15 @@ def render_morning(d: dict) -> str:
         )
         if d.get("rotation_read"):
             lines.append(f"→ *Rotation read:* {d['rotation_read']}\n")
+
+    charts = d.get("charts", [])
+    if charts:
+        lines.append("### Trend charts")
+        for c in charts:
+            title = c.get("title", c.get("group", "chart"))
+            ref = c.get("url") or c.get("path", "")
+            lines.append(f"- [{title}]({ref})")
+        lines.append("")
 
     movers = d.get("premarket_movers", [])
     if movers:

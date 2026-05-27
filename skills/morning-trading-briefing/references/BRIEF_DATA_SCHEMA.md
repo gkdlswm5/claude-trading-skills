@@ -36,13 +36,31 @@ The orchestrator skill assembles a single JSON object and passes it through `com
       "how_measured": "...",
       "why_matters": "...",
       "reaction_history": "...",
-      "watch_for_today": "..."
+      "watch_for_today": "...",
+      // Optional plain-English line at config.style.eli5_level (light|medium|heavy)
+      "eli5": "..."
     }
   ],
 
   "fed_speakers": [
     {"time_et": "10:00", "name": "Powell", "voter_status": "voter|non-voter|chair",
-     "lean": "hawkish|neutral|dovish", "topic": "..."}
+     "lean": "hawkish|neutral|dovish", "topic": "...",
+     "eli5": "..."}  // optional plain-English line (config.style.eli5_level)
+  ],
+
+  // Optional trend series for sparklines (inline) + charts (PNG). Lists of values,
+  // oldest→newest, length = config.style.chart_history_days of daily closes.
+  "trends": {
+    "spy": [1.0], "qqq": [1.0], "iwm": [1.0],
+    "us2y": [4.5], "us10y": [4.49], "us30y": [5.0], "vix": [17.0],
+    "wti": [92.0], "gold": [4511.0], "copper": [6.45]
+  },
+
+  // Optional chart manifest from generate_charts.py (build_charts → manifest).
+  // Each: {group, title, path, url?}. url set after Drive upload; markdown links it.
+  "charts": [
+    {"group": "indices", "title": "Index trend (rebased = 100)",
+     "path": "briefings/charts/2026-05-27/2026-05-27_indices.png", "url": "https://drive..."}
   ],
 
   "overnight": {
@@ -143,7 +161,10 @@ skips that calendar:
 | `macro_events` | one timed event per `econ_releases` + `fed_speakers` |
 | `earnings` | one timed event per `earnings_today` entry (deduped, my_positions wins) |
 | `my_positions` | all-day summary event carrying the full rendered brief |
-| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + energy catalysts + pre-market movers + `rates_news` + `commodities_news` + `geopolitical_summary` |
+| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + `trends` sparklines + energy catalysts + pre-market movers + `rates_news` + `commodities_news` + `geopolitical_summary` |
+
+> Calendar event bodies are text-only: sparklines (`trends`) render in them, but the
+> PNG `charts` and per-event `eli5` lines appear only in the markdown / Drive archive.
 
 ## Afternoon shape
 
