@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
 
 from render_brief import render
 
@@ -37,10 +37,79 @@ def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     return f"{date_str}T{hhmm}:00"
 
 
+def _slug(summary: str) -> str:
+    """Stable slug for dedup keys. Drops parenthetical content (volatile
+    consensus / implied-move values that change between runs) so the same
+    logical event maps to the same key across a morning auto-run and a later
+    manual refresh."""
+    s = re.sub(r"\([^)]*\)", "", summary).lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s[:48] or "item"
+
+
 def _add_minutes(hhmm: str, minutes: int) -> str:
     h, m = (int(x) for x in hhmm.split(":"))
     total = h * 60 + m + minutes
     return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _market_updates_digest(data: dict) -> str:
+    """Compose the Market Updates all-day digest body from existing brief_data
+    sections. This is the 'soft / narrative context' lane: snapshot + must-reads,
+    overnight wrap, energy/commodity catalysts, pre-market movers, and the
+    geopolitical wrap. Every part is conditional so the digest degrades cleanly
+    when run early (no movers) or without geo."""
+    snap = data.get("snapshot", {})
+    parts: list[str] = [f"# Market Updates — {data.get('date', '')}".rstrip()]
+
+    snap_line = " | ".join(
+        f"{label} {snap[key]}"
+        for label, key in [("SPY", "spy"), ("DXY", "dxy"), ("10Y", "us10y"), ("VIX", "vix")]
+        if snap.get(key)
+    )
+    if snap_line:
+        parts.append(f"\n**Snapshot:** {snap_line}")
+
+    must = data.get("must_read", [])
+    if must:
+        parts.append("\n**Must-read:**")
+        parts.extend(f"{i}. {item}" for i, item in enumerate(must, 1))
+
+    on = data.get("overnight", {})
+    if on:
+        asia = " / ".join(
+            f"{lbl} {on[k]}" for lbl, k in [("Nikkei", "nikkei"), ("HSI", "hsi"), ("KOSPI", "kospi")] if on.get(k)
+        )
+        eur = " / ".join(
+            f"{lbl} {on[k]}" for lbl, k in [("DAX", "dax"), ("FTSE", "ftse"), ("STOXX", "stoxx")] if on.get(k)
+        )
+        wrap = "; ".join(p for p in [f"Asia — {asia}" if asia else "", f"Europe — {eur}" if eur else ""] if p)
+        if wrap:
+            parts.append(f"\n**Overnight:** {wrap}")
+        if on.get("top_headline"):
+            parts.append(on["top_headline"])
+
+    energy_bits = []
+    if data.get("eia_opec_today"):
+        energy_bits.append(data["eia_opec_today"])
+    for c in data.get("commodities", []):
+        if c.get("catalyst"):
+            energy_bits.append(f"{c.get('ticker', '?')} ({c.get('chg', '—')}): {c['catalyst']}")
+    if energy_bits:
+        parts.append("\n**Energy / commodity catalysts:** " + " | ".join(energy_bits))
+
+    movers = data.get("premarket_movers", [])
+    if movers:
+        rendered = ", ".join(
+            f"{m.get('ticker', '?')} {m.get('change', '—')} ({m.get('catalyst', '')})".strip()
+            for m in movers
+        )
+        parts.append(f"\n**Pre-market movers:** {rendered}")
+
+    if data.get("geopolitical_summary"):
+        parts.append(f"\n**Geopolitical:** {data['geopolitical_summary']}")
+
+    return "\n".join(parts).strip()
 
 
 def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
@@ -159,6 +228,36 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                 "colorId": "11",  # Tomato
             }
         )
+
+    # 4. All-day Market Updates digest (soft / narrative context lane).
+    # Morning only; bundles snapshot + must-reads + overnight + energy + movers + geo.
+    mu_id = calendars.get("market_updates")
+    if mu_id and mode == "morning":
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        nxt = d.fromordinal(d.toordinal() + 1)
+        events.append(
+            {
+                "calendarId": mu_id,
+                "summary": "Market Updates",
+                "startTime": f"{d.isoformat()}T00:00:00Z",
+                "endTime": f"{nxt.isoformat()}T00:00:00Z",
+                "timeZone": DEFAULT_TZ,
+                "allDay": True,
+                "description": _market_updates_digest(data)[:8000],
+                "colorId": "9",  # Blueberry
+            }
+        )
+
+    # Finalize: stamp each event with a stable dedup key + embed it as a hidden
+    # HTML comment in the description. The orchestrator upserts by searching the
+    # day's events for the "mtb-key" marker — update_event if found, else create.
+    # This makes re-runs (manual news refresh after the auto-run) idempotent.
+    lane_by_id = {v: k for k, v in calendars.items()}
+    for ev in events:
+        lane = lane_by_id.get(ev["calendarId"], "event")
+        key = f"mtb:{date_str}:{lane}:{_slug(ev['summary'])}"
+        ev["dedupKey"] = key
+        ev["description"] = f"{ev['description']}\n\n<!-- mtb-key: {key} -->"
 
     return events
 

@@ -10,6 +10,17 @@ version: 1
 timezone: America/Los_Angeles   # Display timezone for calendar events
 market_timezone: America/New_York
 
+# ---- Integration mode ----
+# Set ib_integration to false when running without local TWS / IB Gateway
+# (e.g. on Claude Code Web). The brief will skip position-dependent sections:
+#   - "My positions" (overnight P&L, stop alerts, short-leg alerts, holdings news,
+#     upcoming earnings on holdings)
+#   - "Your positions reporting" inside Earnings today
+#   - The "My Positions" calendar receives only the all-day summary event
+# All other sections (macro, market-wide earnings, opportunities) work as normal.
+integration:
+  ib_integration: false   # set true once you have TWS/IB Gateway reachable on localhost:7497
+
 # ---- Calendars ----
 # Run `list_calendars` via the Calendar MCP and paste IDs here.
 # See references/CALENDAR_SETUP.md for how to create the 3 sub-calendars.
@@ -25,7 +36,9 @@ drive:
 
 # ---- Watchlist ----
 # Tickers you don't necessarily hold but want covered in news/earnings/flow.
-# IB positions are pulled automatically and don't need to be listed.
+# When ib_integration=false, this list IS your "holdings" for the purposes of
+# news + earnings filtering. When ib_integration=true, IB positions are merged
+# with this list.
 watchlist:
   - SPY
   - QQQ
@@ -57,7 +70,7 @@ crypto_tickers:
   - BTC-USD
   - ETH-USD
 
-# ---- Alert thresholds ----
+# ---- Alert thresholds (only used when ib_integration=true) ----
 alerts:
   stop_loss_proximity_pct: 3.0       # Flag positions within 3% of stop
   short_leg_delta_breach: 0.35       # Flag short calls/puts with |delta| > this
@@ -104,11 +117,11 @@ sections:
     must_read_top_3: true
     macro_day_ahead: true
     earnings_today: true
-    my_positions: true
+    my_positions: true     # auto-skipped if ib_integration=false
     opportunities: true
   afternoon:
     todays_recap: true
-    closing_bell_positioning: true
+    closing_bell_positioning: true   # auto-skipped if ib_integration=false
     overnight_risks: true
     tomorrows_setup: true
 
@@ -117,7 +130,7 @@ opportunities:
   scanner_bullish_top_n: 3
   scanner_pmcc_top_n: 3
   insider_buying_min_value_usd: 1000000
-  whale_hunting_on_holdings: true
+  whale_hunting_on_holdings: true   # falls back to watchlist when no IB
 
 # ---- Output style ----
 style:

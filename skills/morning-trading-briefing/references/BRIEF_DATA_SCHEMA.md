@@ -114,9 +114,28 @@ The orchestrator skill assembles a single JSON object and passes it through `com
     ]
   },
 
+  // Optional. WebSearch-synthesized geopolitical/headline wrap. Tier-1 sources
+  // only (Reuters/AP/Bloomberg/FT/WSJ + primary), require >=2-source
+  // corroboration, facts not punditry. Renders as a "Geopolitical" section in
+  // the markdown and feeds the Market Updates digest. Omit if no IB/no search.
+  "geopolitical_summary": "...",
+
   "noise_log_path": "briefings/noise_log.md"
 }
 ```
+
+### Calendar routing (morning)
+
+`compose_brief.py build_calendar_events()` routes sections to calendars by the
+keys present in `config.yaml calendars:`. Each is optional — a missing key
+skips that calendar:
+
+| Calendar key | Receives |
+|---|---|
+| `macro_events` | one timed event per `econ_releases` + `fed_speakers` |
+| `earnings` | one timed event per `earnings_today` entry (deduped, my_positions wins) |
+| `my_positions` | all-day summary event carrying the full rendered brief |
+| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + energy catalysts + pre-market movers + `geopolitical_summary` |
 
 ## Afternoon shape
 
