@@ -17,6 +17,20 @@ The orchestrator skill assembles a single JSON object and passes it through `com
   // Optional one-line headline rendered above must-read (config.style.bottom_line).
   "bottom_line": "...",
 
+  // Optional. Tickers to bold wherever they appear (config.watchlist + mega_caps +
+  // holdings). Powers the "bold your tickers" readability feature.
+  "watchlist": ["SPY", "QQQ", "NVDA"],
+
+  // Optional. From technicals.py risk_regime() — risk-on/off one-liner.
+  "risk_regime": {"label": "risk-on|neutral|risk-off", "score": 2, "reason": "..."},
+
+  // Optional. From technicals.py build_levels() — per-ticker key levels.
+  "key_levels": [
+    {"ticker": "SPY", "last": 590.0, "sma50": 575.0, "sma200": 540.0,
+     "support_20d": 580.0, "resistance_20d": 595.0,
+     "pct_vs_sma50": 2.6, "pct_vs_sma200": 9.3, "trend": "uptrend (above 50 & 200 DMA)"}
+  ],
+
   // Optional. Mirrors config.filters so the deterministic scripts apply the same
   // suppression the orchestrator intends. Omit → defaults (drop_minor_econ + voters_only).
   "filters": {"drop_minor_econ": true, "voters_only": true},

@@ -16,12 +16,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from event_filters import filter_releases, impact_rank, impact_tag
 from sparkline import spark_label
+
+
+def _bold_tickers(text: str, tickers: list[str]) -> str:
+    """Bold whole-word ticker occurrences so position-relevant items pop."""
+    if not text or not tickers:
+        return text
+    for t in sorted({t for t in tickers if t}, key=len, reverse=True):
+        text = re.sub(rf"(?<![\w*]){re.escape(t)}(?![\w*])", f"**{t}**", text)
+    return text
 
 
 def _get(d: dict, *keys: str, default: Any = "—") -> Any:
@@ -57,15 +67,22 @@ def render_morning(d: dict) -> str:
     )
     lines.append("")
 
+    tickers = d.get("watchlist", [])
+
     if d.get("bottom_line"):
-        lines.append(f"**Bottom line:** {d['bottom_line']}")
+        lines.append(f"**Bottom line:** {_bold_tickers(d['bottom_line'], tickers)}")
+        lines.append("")
+
+    regime = d.get("risk_regime")
+    if regime and regime.get("label"):
+        lines.append(f"**Regime:** {regime['label']} — {regime.get('reason', '')}")
         lines.append("")
 
     must = d.get("must_read", [])
     if must:
         lines.append("## Must-read today")
         for i, item in enumerate(must, 1):
-            lines.append(f"{i}. {item}")
+            lines.append(f"{i}. {_bold_tickers(item, tickers)}")
         lines.append("")
 
     lines.append("---\n")
@@ -155,6 +172,26 @@ def render_morning(d: dict) -> str:
         if d.get("rates_news"):
             lines.append(f"→ *News:* {d['rates_news']}")
         lines.append("")
+
+    levels = d.get("key_levels", [])
+    if levels:
+        lines.append("### Key levels")
+        lines.append(
+            _table(
+                ["Ticker", "Last", "50DMA", "200DMA", "20d S/R", "Trend"],
+                [
+                    [
+                        lv.get("ticker", "?"),
+                        lv.get("last", "—"),
+                        lv.get("sma50", "—"),
+                        lv.get("sma200", "—"),
+                        f"{lv.get('support_20d', '—')}–{lv.get('resistance_20d', '—')}",
+                        lv.get("trend", ""),
+                    ]
+                    for lv in levels
+                ],
+            )
+        )
 
     comm = d.get("commodities", [])
     if comm:

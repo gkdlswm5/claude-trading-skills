@@ -80,6 +80,10 @@ def _market_updates_digest(data: dict) -> str:
     if snap_line:
         parts.append(f"\n**Snapshot:** {snap_line}")
 
+    regime = data.get("risk_regime")
+    if regime and regime.get("label"):
+        parts.append(f"\n**Regime:** {regime['label']} — {regime.get('reason', '')}")
+
     must = data.get("must_read", [])
     if must:
         parts.append("\n**Must-read:**")

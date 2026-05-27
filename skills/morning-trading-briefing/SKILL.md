@@ -147,6 +147,8 @@ Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate
 - `geopolitical_summary` (optional; from the Step 1 geo wrap — Tier-1 sourced, corroborated. Feeds the markdown "Geopolitical" section + the Market Updates digest.)
 - `bottom_line` (one tight headline, even shorter than must-read; `config.style.bottom_line`)
 - `filters` (mirror `config.filters` so the scripts apply the same suppression: `{drop_minor_econ, voters_only}`)
+- `watchlist` (config.watchlist + mega_caps + holdings — bolded in must-read/bottom-line when `config.style.bold_tickers`)
+- `key_levels` + `risk_regime` (from `technicals.py` — see Step 6)
 
 **Noise filtering (config.filters):** minor econ (Low-impact, or denylisted: MBA
 mortgage, Redbook, bills, regional Fed surveys) and non-voter / ceremonial Fed
@@ -190,6 +192,19 @@ It writes one PNG per group + `charts_manifest.json`. After uploading the PNGs i
 Step 8, set each manifest entry's `url` and put the manifest on brief_data `charts`
 so the markdown links them. (Calendar entries are text-only — charts live in the
 markdown/Drive; sparklines cover the calendar.)
+
+**Technical levels + risk regime (`style.technical_levels` / `style.risk_regime`):**
+run `technicals.py` on the same history (plus VIX + sector breadth %) to compute
+per-index key levels (50/200 DMA, 20-day support/resistance, trend) and a risk-on/off
+one-liner:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/technicals.py --data /tmp/series.json
+# series.json: {"series": {"SPY": [..closes..], ...}, "vix": 17.0, "breadth_pct": 70}
+```
+
+Put the result on brief_data `key_levels` + `risk_regime`. The renderer shows a Key
+levels table and a "Regime:" line; the digest carries the regime one-liner.
 
 **Render + events:**
 
