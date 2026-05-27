@@ -60,11 +60,15 @@ def test_full_config_generates_events():
     cals = {e["calendarId"] for e in events}
     assert cals == {"macro@x.com", "earn@x.com", "pos@x.com", "mu@x.com"}
 
-    # Confirm dedup: NVDA appears in megacaps AND my_positions but only one event.
-    nvda_events = [e for e in events if "NVDA" in e["summary"]]
-    assert len(nvda_events) == 1
-    # And the dedup kept the my_positions version (has "Your exposure")
-    assert "Your exposure" in nvda_events[0]["description"]
+    # Earnings is now ONE ranked all-day digest, not per-company events.
+    earn_events = [e for e in events if e["calendarId"] == "earn@x.com"]
+    assert len(earn_events) == 1
+    digest = earn_events[0]
+    assert digest.get("allDay") is True
+    assert "Earnings —" in digest["summary"]
+    # NVDA (in both megacaps + my_positions) appears once, with position detail.
+    assert digest["description"].count("NVDA") == 1
+    assert "exposure:" in digest["description"]
 
 
 def test_market_updates_digest():

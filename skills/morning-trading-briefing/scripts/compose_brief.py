@@ -23,6 +23,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+from event_filters import filter_releases, filter_speakers, impact_color, impact_tag
 from render_brief import render
 from sparkline import spark_label
 
@@ -36,6 +37,14 @@ def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     start/end as naive local-time ISO when timeZone is supplied.
     """
     return f"{date_str}T{hhmm}:00"
+
+
+def _implied(earn: dict) -> float:
+    """Parse implied_move to a float for ranking; missing/garbage sorts last."""
+    try:
+        return float(str(earn.get("implied_move", "")).strip().rstrip("%"))
+    except (ValueError, TypeError):
+        return -1.0
 
 
 def _slug(summary: str) -> str:
@@ -142,10 +151,16 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
     date_str = data.get("date") or date.today().isoformat()
     mode = data.get("mode", "morning")
 
-    # 1. Timed events for each econ release on Macro Events calendar
+    # 1. Timed events for each econ release on Macro Events calendar.
+    # Filter minor (unless only-data), sort by impact, tag + color by impact.
+    flt = data.get("filters", {})
     macro_id = calendars.get("macro_events")
     if macro_id and mode == "morning":
-        for r in data.get("econ_releases", []):
+        releases = filter_releases(
+            data.get("econ_releases", []),
+            drop_minor=flt.get("drop_minor_econ", True),
+        )
+        for r in releases:
             time_et = r.get("time_et", "08:30")
             end_et = _add_minutes(time_et, 15)
             body_parts = [
@@ -158,23 +173,28 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                 ("Why it matters", "why_matters"),
                 ("Reaction history", "reaction_history"),
                 ("Watch for today", "watch_for_today"),
+                ("In plain English", "eli5"),
             ]:
                 if r.get(key):
                     body_parts.append(f"**{label}:** {r[key]}")
                     body_parts.append("")
+            tag = impact_tag(r.get("impact"))
+            prefix = f"{tag} " if tag else ""
             events.append(
                 {
                     "calendarId": macro_id,
-                    "summary": f"{r.get('name', 'Econ release')} (consensus {r.get('consensus', 'n/a')})",
+                    "summary": f"{prefix}{r.get('name', 'Econ release')} (consensus {r.get('consensus', 'n/a')})",
                     "startTime": _et_iso(date_str, time_et),
                     "endTime": _et_iso(date_str, end_et),
                     "timeZone": DEFAULT_TZ,
                     "description": "\n".join(body_parts).strip(),
-                    "colorId": "7",  # Peacock blue
+                    "colorId": impact_color(r.get("impact")),
                 }
             )
 
-        for s in data.get("fed_speakers", []):
+        for s in filter_speakers(
+            data.get("fed_speakers", []), voters_only=flt.get("voters_only", True)
+        ):
             time_et = s.get("time_et", "10:00")
             end_et = _add_minutes(time_et, 30)
             events.append(
@@ -203,28 +223,33 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
             t = e.get("ticker")
             if t:
                 merged[t] = e  # overwrites megacap entry if same ticker
-        for e in merged.values():
-            timing = e.get("timing", "BMO")
-            time_et = "08:00" if timing == "BMO" else "16:15"
-            end_et = _add_minutes(time_et, 30)
-            body = [
-                f"**Timing:** {timing}",
-                f"**EPS estimate:** {e.get('eps_est', '?')}",
-                f"**Revenue estimate:** {e.get('rev_est', '?')}",
-                f"**Implied move from IV:** {e.get('implied_move', '?')}%",
-            ]
-            if e.get("position_summary"):
-                body.append(f"**Your exposure:** {e['position_summary']} (delta {e.get('delta', '?')})")
-            if e.get("hedge_recommendation"):
-                body.append(f"**Recommendation:** {e['hedge_recommendation']}")
+        # One ranked all-day digest. Importance: your positions first, then by
+        # implied move (biggest first).
+        ranked = sorted(merged.values(), key=lambda e: (0 if e.get("position_summary") else 1, -_implied(e)))
+        if ranked:
+            lines = []
+            for i, e in enumerate(ranked, 1):
+                flag = " ⟵ your position" if e.get("position_summary") else ""
+                lines.append(
+                    f"{i}. {e.get('ticker', '?')} ({e.get('timing', 'BMO')}) — "
+                    f"implied {e.get('implied_move', '?')}% | EPS {e.get('eps_est', '?')} | "
+                    f"Rev {e.get('rev_est', '?')}{flag}"
+                )
+                if e.get("position_summary"):
+                    lines.append(f"   exposure: {e['position_summary']} (delta {e.get('delta', '?')})")
+                if e.get("hedge_recommendation"):
+                    lines.append(f"   recommendation: {e['hedge_recommendation']}")
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            nxt = d.fromordinal(d.toordinal() + 1)
             events.append(
                 {
                     "calendarId": earn_id,
-                    "summary": f"{e.get('ticker', '?')} earnings — {timing} (implied {e.get('implied_move', '?')}%)",
-                    "startTime": _et_iso(date_str, time_et),
-                    "endTime": _et_iso(date_str, end_et),
+                    "summary": f"Earnings — {len(ranked)} reporting (by importance)",
+                    "startTime": f"{d.isoformat()}T00:00:00Z",
+                    "endTime": f"{nxt.isoformat()}T00:00:00Z",
                     "timeZone": DEFAULT_TZ,
-                    "description": "\n".join(body),
+                    "allDay": True,
+                    "description": "\n".join(lines)[:8000],
                     "colorId": "6",  # Tangerine
                 }
             )

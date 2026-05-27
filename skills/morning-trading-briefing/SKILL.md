@@ -139,12 +139,21 @@ Merge `stop_alerts`, `short_leg_alerts`, `upcoming_earnings` into the brief_data
 
 Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate:
 
-- `snapshot`, `econ_releases`, `fed_speakers`, `overnight`, `rates`, `rates_news`, `commodities`, `eia_opec_today`, `commodities_news`
+- `snapshot`, `econ_releases` (set `impact` High/Medium/Low per event — drives tag/color/sort/filter), `fed_speakers`, `overnight`, `rates`, `rates_news`, `commodities`, `eia_opec_today`, `commodities_news`
 - `fx`, `sector_etfs`, `rotation_read`, `premarket_movers`
 - `earnings_today` (split mega-caps vs. my_positions — `my_positions` empty when no IB)
 - `my_positions` (omit entirely when no IB, or just populate `holding_events` with watchlist news)
 - `opportunities`
 - `geopolitical_summary` (optional; from the Step 1 geo wrap — Tier-1 sourced, corroborated. Feeds the markdown "Geopolitical" section + the Market Updates digest.)
+- `bottom_line` (one tight headline, even shorter than must-read; `config.style.bottom_line`)
+- `filters` (mirror `config.filters` so the scripts apply the same suppression: `{drop_minor_econ, voters_only}`)
+
+**Noise filtering (config.filters):** minor econ (Low-impact, or denylisted: MBA
+mortgage, Redbook, bills, regional Fed surveys) and non-voter / ceremonial Fed
+speakers are suppressed — *unless notable* (the only data of the day is kept via the
+override in `event_filters.filter_releases`). `event_filters.py` is the shared,
+tested helper; render + compose both apply it. Set `impact` on every econ event so
+tags/colors/sort work.
 
 For each section that ends with a `so_what` field (rates, fx, sector rotation): write one sentence tying the data to the user's actual positions. This is the discipline that turns the brief from a data dump into actionable signal.
 
@@ -226,8 +235,8 @@ Procedure per event:
 If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
 
 Calendar routing (each calendar is optional — a missing `config.yaml` key skips it):
-- **Macro Events** — timed events for econ releases + Fed speakers
-- **Earnings** — timed events for earnings (deduped)
+- **Macro Events** — timed econ events (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color: red/banana/graphite) + voter Fed speakers
+- **Earnings** — ONE all-day **ranked digest** ("Earnings — N reporting"), your positions first then by implied move
 - **My Positions** — all-day summary carrying the full rendered brief
 - **Market Updates** — all-day **digest**: snapshot + must-reads + overnight + energy catalysts + pre-market movers + geopolitical wrap (the "soft / narrative context" lane; emitted only when `market_updates` is set)
 

@@ -148,6 +148,17 @@ style:
   charts: true                 # matplotlib PNG dashboard → Drive + markdown (needs matplotlib/pandas)
   sparklines: true             # unicode trend lines inline (calendar digest + markdown); zero-dep
   chart_history_days: 90       # lookback for trend series (Yahoo)
+  impact_tags: true            # [HIGH]/[MED]/[LOW] prefix + calendar color-coding + sort by impact
+  bottom_line: true            # one-line headline at the very top
+  quiet_day_note: true         # say "Light macro day" instead of padding with filler
+
+# ---- Noise filters ----
+# Minor items are suppressed UNLESS notable (only data of the day / surprise / coupon
+# auction / voter on-topic). All reversible — set false to keep everything.
+filters:
+  drop_minor_econ: true        # drop Low-impact + denylisted econ (MBA, Redbook, bills, regional Fed)
+  voters_only: true            # Fed speakers: keep voters with a real topic; drop ceremonial/odd-hour
+  # minor_name_patterns: []    # optional extra denylist substrings (merged with defaults)
 
 # ---- Noise log ----
 # After each briefing, jot one line. Once a week prune what doesn't matter.

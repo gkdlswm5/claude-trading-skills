@@ -14,6 +14,13 @@ The orchestrator skill assembles a single JSON object and passes it through `com
   "date": "YYYY-MM-DD",
   "generated_at_et": "YYYY-MM-DD HH:MM ET",
 
+  // Optional one-line headline rendered above must-read (config.style.bottom_line).
+  "bottom_line": "...",
+
+  // Optional. Mirrors config.filters so the deterministic scripts apply the same
+  // suppression the orchestrator intends. Omit → defaults (drop_minor_econ + voters_only).
+  "filters": {"drop_minor_econ": true, "voters_only": true},
+
   "snapshot": {
     "spy": "string",
     "spy_premarket": "+0.3%",
@@ -30,6 +37,8 @@ The orchestrator skill assembles a single JSON object and passes it through `com
       "name": "Consumer Price Index (CPI) YoY",
       "consensus": "3.1%",
       "prior": "3.0%",
+      "impact": "High",  // High|Medium|Low (from FMP) — drives tag, color, sort, filter
+
       // Following 5 fields come from econ-indicator-explainer
       // lookup_indicator.py --json "<name>" → use sections.what_it_is etc.
       "what": "...",
@@ -158,8 +167,8 @@ skips that calendar:
 
 | Calendar key | Receives |
 |---|---|
-| `macro_events` | one timed event per `econ_releases` + `fed_speakers` |
-| `earnings` | one timed event per `earnings_today` entry (deduped, my_positions wins) |
+| `macro_events` | one timed event per `econ_releases` (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color) + voter `fed_speakers` |
+| `earnings` | ONE all-day **ranked digest** — your positions first, then by implied move (deduped, my_positions wins) |
 | `my_positions` | all-day summary event carrying the full rendered brief |
 | `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + `trends` sparklines + energy catalysts + pre-market movers + `rates_news` + `commodities_news` + `geopolitical_summary` |
 

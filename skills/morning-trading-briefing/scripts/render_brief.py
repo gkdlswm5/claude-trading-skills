@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from event_filters import filter_releases, impact_rank, impact_tag
 from sparkline import spark_label
 
 
@@ -56,6 +57,10 @@ def render_morning(d: dict) -> str:
     )
     lines.append("")
 
+    if d.get("bottom_line"):
+        lines.append(f"**Bottom line:** {d['bottom_line']}")
+        lines.append("")
+
     must = d.get("must_read", [])
     if must:
         lines.append("## Must-read today")
@@ -66,12 +71,19 @@ def render_morning(d: dict) -> str:
     lines.append("---\n")
     lines.append("## Macro day-ahead\n")
 
-    releases = d.get("econ_releases", [])
+    flt = d.get("filters", {})
+    releases = filter_releases(
+        d.get("econ_releases", []), drop_minor=flt.get("drop_minor_econ", True)
+    )
     if releases:
         lines.append("### Economic releases\n")
+        if not any(impact_rank(r.get("impact")) >= 2 for r in releases):
+            lines.append("_Light macro day — no high-impact releases scheduled._\n")
         for r in releases:
+            tag = impact_tag(r.get("impact"))
+            tag_str = f"{tag} " if tag else ""
             lines.append(
-                f"**{r.get('time_et', '?')} ET — {r.get('name', '?')}** "
+                f"**{tag_str}{r.get('time_et', '?')} ET — {r.get('name', '?')}** "
                 f"*(consensus {r.get('consensus', 'n/a')} | "
                 f"prior {r.get('prior', 'n/a')})*\n"
             )
