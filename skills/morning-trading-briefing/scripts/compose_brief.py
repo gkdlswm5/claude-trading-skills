@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -34,6 +35,16 @@ def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     start/end as naive local-time ISO when timeZone is supplied.
     """
     return f"{date_str}T{hhmm}:00"
+
+
+def _slug(summary: str) -> str:
+    """Stable slug for dedup keys. Drops parenthetical content (volatile
+    consensus / implied-move values that change between runs) so the same
+    logical event maps to the same key across a morning auto-run and a later
+    manual refresh."""
+    s = re.sub(r"\([^)]*\)", "", summary).lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s[:48] or "item"
 
 
 def _add_minutes(hhmm: str, minutes: int) -> str:
@@ -236,6 +247,17 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                 "colorId": "9",  # Blueberry
             }
         )
+
+    # Finalize: stamp each event with a stable dedup key + embed it as a hidden
+    # HTML comment in the description. The orchestrator upserts by searching the
+    # day's events for the "mtb-key" marker — update_event if found, else create.
+    # This makes re-runs (manual news refresh after the auto-run) idempotent.
+    lane_by_id = {v: k for k, v in calendars.items()}
+    for ev in events:
+        lane = lane_by_id.get(ev["calendarId"], "event")
+        key = f"mtb:{date_str}:{lane}:{_slug(ev['summary'])}"
+        ev["dedupKey"] = key
+        ev["description"] = f"{ev['description']}\n\n<!-- mtb-key: {key} -->"
 
     return events
 

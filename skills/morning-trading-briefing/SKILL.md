@@ -76,7 +76,21 @@ only with **≥2 independent Tier-1 corroborations**; single-source items are dr
 or explicitly flagged "unconfirmed." State **facts and the cross-asset read**
 ("Brent +2% on Hormuz headline"), never punditry or price predictions. Exclude
 social/aggregator/opinion outlets. This is the least reproducible section (live
-search), so keep it tight — 2-4 sentences.
+search), so keep it tight — 2-4 sentences. Full contract:
+`references/GEO_WRAP_QUALITY.md`.
+
+**Validate before publishing.** Run the deterministic checker on the assembled
+`geopolitical_summary`:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/check_geo_quality.py --text "<geopolitical_summary>" --json
+```
+
+Hard fail (exit 1) = banned emotive lexicon, or a quantified market claim with no
+allowlisted source. On hard fail, **omit the geo block** rather than publish it —
+a missing wrap beats a biased/unsourced one. Warnings (prediction language,
+single-source markers) are surfaced for a quick manual look but don't block.
+This gate is what makes the geo wrap safe to run unattended on the daily auto-run.
 
 ### Step 2 — Enrich econ events with explainer cards
 
@@ -146,7 +160,18 @@ Produces:
 
 ### Step 7 — Write to Google Calendar (skip if --skip-calendar or --dry-run)
 
-Iterate `events.json` and call the Calendar MCP `create_event` for each. Map fields directly:
+**Upsert, don't blindly create** — so a manual re-run (e.g. an intraday news refresh
+after the morning auto-run) updates the day's events instead of duplicating them.
+Each composed event carries a `dedupKey` (e.g. `mtb:2026-05-27:macro_events:cpi`),
+also embedded in its description as `<!-- mtb-key: ... -->`.
+
+Procedure per event:
+1. **Find existing.** `list_events` for the event's calendar on `data.date`
+   (`fullText: "mtb:<date>"` narrows to this skill's managed events). Match the
+   row whose description contains the same `mtb-key` marker.
+2. **Update or create.** If matched → `update_event(eventId, …)` with the fresh
+   `summary`/`startTime`/`endTime`/`timeZone`/`description`/`colorId`. If not →
+   `create_event(…)`. Map fields directly:
 
 | events.json field | MCP param |
 |---|---|
@@ -155,9 +180,11 @@ Iterate `events.json` and call the Calendar MCP `create_event` for each. Map fie
 | `endTime` | `endTime` |
 | `timeZone` | `timeZone` |
 | `calendarId` | `calendarId` |
-| `description` | `description` |
+| `description` | `description` (keep the `mtb-key` marker — it's the upsert anchor) |
 | `colorId` | `colorId` |
-| `allDay` | `allDay` (only set on summary event) |
+| `allDay` | `allDay` (all-day events: My Positions summary + Market Updates digest) |
+
+`dedupKey` is not an MCP param — it's the match anchor, already inside `description`.
 
 If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
 
@@ -169,7 +196,16 @@ Calendar routing (each calendar is optional — a missing `config.yaml` key skip
 
 ### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
 
-Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
+Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Base filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
+
+**Re-run handling (Drive can't update file content via MCP).** The Drive MCP
+exposes `create_file` / `search_files` but no update-content or delete tool, so a
+same-name re-upload would create a duplicate. On re-run: `search_files` for the
+base name in the folder; if it already exists, upload under a versioned name
+`YYYY-MM-DD-morning-rHHMM.md` (ET) instead of duplicating the base. The base file
+stays the canonical morning archive; manual refreshes are clearly versioned.
+(Calendar events upsert in place — only the Drive archive versions, due to the MCP
+limitation.)
 
 ### Step 9 — Print summary to user
 
