@@ -67,30 +67,33 @@ Check `integration.ib_integration`. The procedure below is for the full IB-integ
 | Insider buying | `insider-trading` (watchlist + holdings) | no (uses watchlist) |
 | Fresh setups | `scanner-bullish` + `scanner-pmcc` (top 3 each) | no |
 | Geopolitical wrap | `WebSearch` constrained to trusted sources (see rule below) → `geopolitical_summary` | no |
+| Bonds/rates news | `WebSearch` (Treasury supply/auctions, Fed drivers, credit) → `rates_news` | no |
+| Commodities news | `WebSearch` (OPEC+/EIA, supply disruptions, metals/ags) → `commodities_news` | no |
 
-**Geopolitical wrap — source-quality rule (avoid clickbait / bad data):** apply the
+**Sourced-news rule (avoid clickbait / bad data) — applies to all three news
+fields** (`geopolitical_summary`, `rates_news`, `commodities_news`): apply the
 `market-news-analyst/references/trusted_news_sources.md` tiering. Use **Tier-1
 sources only** for facts — Reuters, AP, Bloomberg, FT, WSJ, and primary sources
-(central-bank statements, official gov releases, filings). A claim enters the wrap
-only with **≥2 independent Tier-1 corroborations**; single-source items are dropped
-or explicitly flagged "unconfirmed." State **facts and the cross-asset read**
-("Brent +2% on Hormuz headline"), never punditry or price predictions. Exclude
-social/aggregator/opinion outlets. This is the least reproducible section (live
-search), so keep it tight — 2-4 sentences. Full contract:
-`references/GEO_WRAP_QUALITY.md`.
+(central-bank statements, Treasury/EIA/OPEC releases, filings). A claim enters a
+wrap only with **≥2 independent Tier-1 corroborations**; single-source items are
+dropped or explicitly flagged "unconfirmed." State **facts and the cross-asset
+read** ("Brent +2% on Hormuz headline"), never punditry or price predictions.
+Exclude social/aggregator/opinion outlets. These are the least reproducible
+sections (live search), so keep each tight — 2-4 sentences. Full contract:
+`references/NEWS_QUALITY.md`.
 
-**Validate before publishing.** Run the deterministic checker on the assembled
-`geopolitical_summary`:
+**Validate before publishing.** Run the deterministic checker on **each** assembled
+news field:
 
 ```bash
-python3 skills/morning-trading-briefing/scripts/check_geo_quality.py --text "<geopolitical_summary>" --json
+python3 skills/morning-trading-briefing/scripts/check_news_quality.py --text "<field text>" --json
 ```
 
 Hard fail (exit 1) = banned emotive lexicon, or a quantified market claim with no
-allowlisted source. On hard fail, **omit the geo block** rather than publish it —
+allowlisted source. On hard fail, **omit that field** rather than publish it —
 a missing wrap beats a biased/unsourced one. Warnings (prediction language,
 single-source markers) are surfaced for a quick manual look but don't block.
-This gate is what makes the geo wrap safe to run unattended on the daily auto-run.
+This gate is what makes the news wraps safe to run unattended on the daily auto-run.
 
 ### Step 2 — Enrich econ events with explainer cards
 
@@ -123,7 +126,7 @@ Merge `stop_alerts`, `short_leg_alerts`, `upcoming_earnings` into the brief_data
 
 Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate:
 
-- `snapshot`, `econ_releases`, `fed_speakers`, `overnight`, `rates`, `commodities`, `eia_opec_today`
+- `snapshot`, `econ_releases`, `fed_speakers`, `overnight`, `rates`, `rates_news`, `commodities`, `eia_opec_today`, `commodities_news`
 - `fx`, `sector_etfs`, `rotation_read`, `premarket_movers`
 - `earnings_today` (split mega-caps vs. my_positions — `my_positions` empty when no IB)
 - `my_positions` (omit entirely when no IB, or just populate `holding_events` with watchlist news)

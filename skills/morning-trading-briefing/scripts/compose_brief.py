@@ -106,6 +106,14 @@ def _market_updates_digest(data: dict) -> str:
         )
         parts.append(f"\n**Pre-market movers:** {rendered}")
 
+    news_bits = []
+    if data.get("rates_news"):
+        news_bits.append(f"Bonds — {data['rates_news']}")
+    if data.get("commodities_news"):
+        news_bits.append(f"Commodities — {data['commodities_news']}")
+    if news_bits:
+        parts.append("\n**Bonds & commodities news:** " + " | ".join(news_bits))
+
     if data.get("geopolitical_summary"):
         parts.append(f"\n**Geopolitical:** {data['geopolitical_summary']}")
 

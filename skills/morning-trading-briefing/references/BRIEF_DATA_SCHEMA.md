@@ -59,10 +59,18 @@ The orchestrator skill assembles a single JSON object and passes it through `com
     "so_what": "..."
   },
 
+  // Optional. Sourced bonds/rates news (Treasury supply/auctions, Fed drivers,
+  // credit). Same NEWS_QUALITY.md gate as geo — Tier-1 sources, corroborated,
+  // neutral lexicon. Renders in the Rates section + Market Updates digest.
+  "rates_news": "...",
+
   "commodities": [
     {"ticker": "WTI", "last": "72.45", "chg": "+0.5%", "catalyst": ""}
   ],
   "eia_opec_today": "OPEC+ JMMC tomorrow; EIA Wednesday 10:30 ET",
+  // Optional. Sourced commodities news (OPEC+/EIA, supply disruptions, metals/ags).
+  // Same NEWS_QUALITY.md gate. Renders in the Commodities section + digest.
+  "commodities_news": "...",
 
   "fx": {
     "dxy": "...", "dxy_chg": "...",
@@ -135,7 +143,7 @@ skips that calendar:
 | `macro_events` | one timed event per `econ_releases` + `fed_speakers` |
 | `earnings` | one timed event per `earnings_today` entry (deduped, my_positions wins) |
 | `my_positions` | all-day summary event carrying the full rendered brief |
-| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + energy catalysts + pre-market movers + `geopolitical_summary` |
+| `market_updates` | all-day **digest** event: snapshot + must-reads + overnight + energy catalysts + pre-market movers + `rates_news` + `commodities_news` + `geopolitical_summary` |
 
 ## Afternoon shape
 

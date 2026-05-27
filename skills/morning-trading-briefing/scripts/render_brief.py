@@ -128,6 +128,8 @@ def render_morning(d: dict) -> str:
         )
         if rates.get("so_what"):
             lines.append(f"→ *So what:* {rates['so_what']}")
+        if d.get("rates_news"):
+            lines.append(f"→ *News:* {d['rates_news']}")
         lines.append("")
 
     comm = d.get("commodities", [])
@@ -141,6 +143,8 @@ def render_morning(d: dict) -> str:
         )
         if d.get("eia_opec_today"):
             lines.append(f"*EIA/OPEC days flagged: {d['eia_opec_today']}*\n")
+        if d.get("commodities_news"):
+            lines.append(f"→ *News:* {d['commodities_news']}\n")
 
     fx = d.get("fx", {})
     if fx:
