@@ -103,24 +103,54 @@ work it isn't reliable at. v2.0 fixes the root cause.
 
 ## Upgrade backlog
 
-### v2.0 — Google API direct writes [PRIORITY, prerequisite]
-- [ ] Google Cloud Console OAuth setup per `GOOGLE_API_SETUP.md`
-- [ ] `credentials.json` placed in gitignored location
-- [ ] Implement `scripts/google_calendar_client.py` (scaffold in repo)
-- [ ] Implement `scripts/google_drive_client.py` (scaffold in repo)
-- [ ] Add `google-api-python-client`, `google-auth-httplib2`,
+### v2.0 — Google API direct writes [SHIPPED]
+- [x] Implement `scripts/google_calendar_client.py` — authenticate (+ CLI
+      flow), list_events_for_day, upsert_event (list→match-by-mtb-key→
+      patch-or-create), delete_events_by_key
+- [x] Implement `scripts/google_drive_client.py` — authenticate (shared
+      token.json), find_file_by_name, upsert_markdown (overwrite by name
+      in folder)
+- [x] Add `google-api-python-client`, `google-auth-httplib2`,
       `google-auth-oauthlib` to `requirements.txt`
-- [ ] Refactor `compose_brief.py` to emit `brief_data.json` as the
-      LLM/Python boundary
-- [ ] New `scripts/write_brief_outputs.py` reads brief_data.json, calls
-      Google clients
-- [ ] Verify against test calendar before touching real ones
+- [x] Frame `brief_data.json` as the LLM/Python boundary in
+      `compose_brief.py` docstring; SKILL.md Pipeline diagram updated
+- [x] New `scripts/write_brief_outputs.py` — reads
+      `briefings/YYYY-MM-DD-{mode}.{md,events.json}`, validates mtb-key
+      markers, upserts each event + the markdown
+- [x] SKILL.md Step 7 + Step 8 collapsed to one `write_brief_outputs.py`
+      invocation; first-run OAuth setup documented inline
+- [x] `config.example.yaml` extended with `google:` block (credentials_path,
+      token_path)
+- [x] 30 unit tests cover: extract_mtb_key edge cases, list pagination,
+      upsert insert/patch/multi-match, delete-by-key, Drive find/upsert,
+      config parsing, payload conversion (timed + all-day shape),
+      validation gating, and a CLI smoke test that runs compose_brief →
+      write_brief_outputs --dry-run end-to-end
+- [ ] **User-side:** complete OAuth setup per `GOOGLE_API_SETUP.md`
+      Steps 1–5 (Google Cloud project + Calendar/Drive APIs enabled +
+      Desktop OAuth client + `credentials.json` in
+      `~/.config/morning-briefing/`). Walkthrough delivered in the v2.0
+      session.
+- [ ] **User-side (Hostinger):** scp `credentials.json` + `token.json`
+      to VPS once you have them. Lands in v2.5.
+- [ ] **Deferred to v2.1:** the back-to-back idempotency proof test, the
+      multi-match cleanup (delete extras when upsert finds >1 hit), and
+      the first real-calendar smoke test against a throwaway calendar.
 
-### v2.1 — Idempotency
-- [ ] Calendar writer upserts by `mtb-key` (extract from description)
-- [ ] Drive writer overwrites canonical
-      `briefings/YYYY-MM-DD-{morning|afternoon}.md`
-- [ ] Idempotency test: run brief 2× back-to-back, count unchanged
+### v2.1 — Idempotency [partially delivered by v2.0]
+- [x] Calendar writer upserts by `mtb-key` (extract from description) —
+      landed in v2.0's `google_calendar_client.upsert_event`
+- [x] Drive writer overwrites canonical
+      `briefings/YYYY-MM-DD-{morning|afternoon}.md` — landed in v2.0's
+      `google_drive_client.upsert_markdown`
+- [ ] Real-calendar idempotency test: run brief 2× back-to-back against
+      a throwaway test calendar; verify event count unchanged and event
+      IDs stable
+- [ ] Multi-match cleanup: when `upsert_event` finds >1 existing event
+      with the same mtb-key (leftover from a bad run), patch the first
+      and DELETE the rest. v2.0 patches one and ignores extras.
+- [ ] Drive: same back-to-back idempotency proof (file ID stable, content
+      replaced, no duplicate file in folder)
 
 ### v2.2 — Snapshot consistency
 - [ ] `as_of_utc` captured once in compose_brief.py

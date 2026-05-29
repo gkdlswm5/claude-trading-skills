@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Top-level composer: takes a brief_data JSON, renders the markdown brief,
-and emits the calendar-events JSON for the LLM to push via the Google Calendar MCP.
+and emits the calendar-events JSON consumed by write_brief_outputs.py.
 
 Usage:
     compose_brief.py --input brief_data.json --out-dir briefings/
@@ -8,11 +8,15 @@ Usage:
 
 Produces in --out-dir (default: ./briefings/):
     YYYY-MM-DD-{morning|afternoon}.md          # the rendered brief
-    YYYY-MM-DD-{morning|afternoon}.events.json # list of calendar events to create
+    YYYY-MM-DD-{morning|afternoon}.events.json # list of calendar events to upsert
 
-The events.json is consumed by the orchestrator skill, which feeds each event to
-the Google Calendar MCP create_event tool. We don't call MCP from Python because
-MCP tools are LLM-mediated, not direct HTTP.
+brief_data.json is the LLM/Python boundary: the orchestrator (LLM) assembles
+it, this script consumes it deterministically, write_brief_outputs.py picks
+up the artifacts here and calls Google Calendar + Drive APIs directly via
+google_calendar_client.py / google_drive_client.py (v2.0+). The pre-v2.0
+flow had the LLM itself call Google via MCP for each event — that path
+duplicated events across re-runs (see state/HANDOFF.md for the 2026-05-27
+incident).
 """
 from __future__ import annotations
 
@@ -33,8 +37,9 @@ DEFAULT_TZ = "America/New_York"
 def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     """Format YYYY-MM-DD + HH:MM as ISO 8601 without zone suffix.
 
-    The Calendar MCP create_event accepts a separate timeZone param and reads
-    start/end as naive local-time ISO when timeZone is supplied.
+    The Google Calendar API takes start.dateTime + start.timeZone as separate
+    fields and reads dateTime as naive local-time when timeZone is supplied
+    alongside. write_brief_outputs.py wraps these into the API shape.
     """
     return f"{date_str}T{hhmm}:00"
 
@@ -298,9 +303,10 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
         )
 
     # Finalize: stamp each event with a stable dedup key + embed it as a hidden
-    # HTML comment in the description. The orchestrator upserts by searching the
-    # day's events for the "mtb-key" marker — update_event if found, else create.
-    # This makes re-runs (manual news refresh after the auto-run) idempotent.
+    # HTML comment in the description. write_brief_outputs.py upserts by
+    # searching the day's events for the "mtb-key" marker — patch if found,
+    # else create. This makes re-runs (manual news refresh after the auto-run)
+    # idempotent.
     lane_by_id = {v: k for k, v in calendars.items()}
     for ev in events:
         lane = lane_by_id.get(ev["calendarId"], "event")
