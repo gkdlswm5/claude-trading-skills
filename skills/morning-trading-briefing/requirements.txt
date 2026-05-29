@@ -2,7 +2,15 @@
 # Install in the run environment (local + the scheduled Claude Code web env):
 #   pip install -r skills/morning-trading-briefing/requirements.txt
 #
-# Only the BI chart generator (scripts/generate_charts.py) needs these; the rest
-# of the pipeline is stdlib. If style.charts is false they are not required.
+# BI chart generator (scripts/generate_charts.py) needs matplotlib + pandas.
+# If style.charts is false they are not required.
 matplotlib>=3.8
 pandas>=2.0
+
+# Google API direct-write path (scripts/write_brief_outputs.py + the
+# google_calendar_client / google_drive_client modules). Required for the
+# unattended daily run on Hostinger; not needed for --dry-run or for the
+# legacy LLM/MCP write path. See references/GOOGLE_API_SETUP.md.
+google-api-python-client>=2.120
+google-auth-httplib2>=0.2
+google-auth-oauthlib>=1.2

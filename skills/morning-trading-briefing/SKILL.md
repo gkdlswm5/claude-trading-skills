@@ -25,7 +25,14 @@ When `ib_integration: false`, the watchlist takes over as the proxy for "holding
 
 ## Pipeline overview
 
-The skill is hybrid: Python scripts handle deterministic work (alert math, template rendering, calendar-event JSON generation); the LLM handles synthesis (assembling sub-skill outputs into `brief_data.json`, writing the "must-read top 3", calling MCP tools to write events + Drive files).
+The skill is hybrid with a strict boundary at `brief_data.json`: the LLM
+handles synthesis (assembling sub-skill outputs into `brief_data.json`,
+writing the "must-read top 3"); from there Python takes over for all
+deterministic work — alert math, template rendering, event-JSON
+generation, **and the Google Calendar + Drive writes** (`v2.0+`, via
+`google_calendar_client.py` / `google_drive_client.py`). The LLM no
+longer touches MCP for calendar/Drive — that path produced the
+2026-05-27 dupe storm (see `state/HANDOFF.md`).
 
 ```
 ┌──────────────┐      ┌─────────────────┐      ┌───────────────┐
@@ -36,9 +43,10 @@ The skill is hybrid: Python scripts handle deterministic work (alert math, templ
 └──────────────┘               │                       │
                                ▼                       ▼
                         check_alerts.py        ┌───────────────┐
-                        lookup_indicator.py    │ MCP writes:   │
-                                               │  Calendar     │
-                                               │  Drive        │
+                        lookup_indicator.py    │write_brief_   │
+                                               │ outputs.py    │
+                                               │ → Calendar API│
+                                               │ → Drive API   │
                                                └───────────────┘
 ```
 
@@ -219,60 +227,73 @@ Produces:
 - `briefings/YYYY-MM-DD-morning.md` — full markdown
 - `briefings/YYYY-MM-DD-morning.events.json` — list of calendar events to create
 
-### Step 7 — Write to Google Calendar (skip if --skip-calendar or --dry-run)
+### Step 7 + 8 — Push to Google Calendar + Drive (Python, v2.0+)
 
-**Upsert, don't blindly create** — so a manual re-run (e.g. an intraday news refresh
-after the morning auto-run) updates the day's events instead of duplicating them.
-Each composed event carries a `dedupKey` (e.g. `mtb:2026-05-27:macro_events:cpi`),
-also embedded in its description as `<!-- mtb-key: ... -->`.
+One command pushes both:
 
-Procedure per event:
-1. **Find existing.** `list_events` for the event's calendar on `data.date`
-   (`fullText: "mtb:<date>"` narrows to this skill's managed events). Match the
-   row whose description contains the same `mtb-key` marker.
-2. **Update or create.** If matched → `update_event(eventId, …)` with the fresh
-   `summary`/`startTime`/`endTime`/`timeZone`/`description`/`colorId`. If not →
-   `create_event(…)`. Map fields directly:
+```bash
+python3 skills/morning-trading-briefing/scripts/write_brief_outputs.py \
+  --config skills/morning-trading-briefing/config.yaml \
+  --date YYYY-MM-DD --mode morning \
+  --briefings-dir briefings/
+```
 
-| events.json field | MCP param |
-|---|---|
-| `summary` | `summary` |
-| `startTime` | `startTime` |
-| `endTime` | `endTime` |
-| `timeZone` | `timeZone` |
-| `calendarId` | `calendarId` |
-| `description` | `description` (keep the `mtb-key` marker — it's the upsert anchor) |
-| `colorId` | `colorId` |
-| `allDay` | `allDay` (all-day events: My Positions summary + Market Updates digest) |
+The script reads `briefings/YYYY-MM-DD-morning.{md,events.json}` (produced
+in Step 6), then:
 
-`dedupKey` is not an MCP param — it's the match anchor, already inside `description`.
+- **Calendar:** loops each event, calls `upsert_event(calendar_id, mtb_key,
+  payload, date_iso)` via `google_calendar_client.py`. The function lists
+  existing events for the day, matches the `<!-- mtb-key: ... -->` marker
+  embedded in the description, and patches in place if found — otherwise
+  creates. Same input → same calendar state, every time.
+- **Drive:** uploads the markdown via `upsert_markdown(folder_id, filename,
+  content)` in `google_drive_client.py`. Looks the file up by name in the
+  configured `briefings_folder_id` and overwrites in place if it exists
+  (file ID stable across re-runs). Filename: `YYYY-MM-DD-morning.md`,
+  MIME `text/markdown`.
 
-If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
+**Flags:**
 
-Calendar routing (each calendar is optional — a missing `config.yaml` key skips it):
-- **Macro Events** — timed econ events (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color: red/banana/graphite) + voter Fed speakers
-- **Earnings** — ONE all-day **ranked digest** ("Earnings — N reporting"), your positions first then by implied move
+- `--dry-run` — print the plan; don't authenticate; don't call Google APIs.
+  Use to smoke-test the wiring before pointing at real calendars.
+- `--skip-calendar`, `--skip-drive` — turn off one writer.
+- `--credentials PATH`, `--token PATH` — override `config.google.*` paths.
+
+**First-run setup.** Once per Google account (see
+`references/GOOGLE_API_SETUP.md`):
+
+```bash
+python3 skills/morning-trading-briefing/scripts/google_calendar_client.py \
+  --authenticate \
+  --credentials ~/.config/morning-briefing/credentials.json \
+  --token       ~/.config/morning-briefing/token.json
+```
+
+That mints a token.json valid for both Calendar + Drive scopes. Subsequent
+runs auto-refresh.
+
+**Failure isolation.** A single bad event (invalid calendar ID, network
+blip) is logged with `FAIL calendar:<lane> <mtb-key> — <error>` and the
+loop continues with the rest. The briefing as a whole never aborts on a
+single-event failure.
+
+**Calendar routing** (each calendar is optional — a missing
+`config.calendars.*` key skips that lane):
+
+- **Macro Events** — timed econ events (minor filtered, sorted by impact,
+  `[HIGH/MED/LOW]` tag + color: red/banana/graphite) + voter Fed speakers
+- **Earnings** — ONE all-day **ranked digest** ("Earnings — N reporting"),
+  your positions first then by implied move
 - **My Positions** — all-day summary carrying the full rendered brief
-- **Market Updates** — all-day **digest**: snapshot + must-reads + overnight + energy catalysts + pre-market movers + geopolitical wrap (the "soft / narrative context" lane; emitted only when `market_updates` is set)
+- **Market Updates** — all-day **digest**: snapshot + must-reads +
+  overnight + energy catalysts + pre-market movers + geopolitical wrap
+  (the "soft / narrative context" lane; emitted only when
+  `market_updates` is set)
 
-### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
-
-Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Base filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
-
-**Chart PNGs (when `style.charts`):** upload each PNG from the Step 6 manifest via
-`create_file` (base64 content, `contentMimeType: image/png`, same `parentId`). Take
-the returned file link, set it as the manifest entry's `url`, and ensure brief_data
-`charts` carries the manifest so the markdown links resolve. Re-run versioning works
-the same way as the `.md` (charts live under a dated `charts/YYYY-MM-DD/` subfolder).
-
-**Re-run handling (Drive can't update file content via MCP).** The Drive MCP
-exposes `create_file` / `search_files` but no update-content or delete tool, so a
-same-name re-upload would create a duplicate. On re-run: `search_files` for the
-base name in the folder; if it already exists, upload under a versioned name
-`YYYY-MM-DD-morning-rHHMM.md` (ET) instead of duplicating the base. The base file
-stays the canonical morning archive; manual refreshes are clearly versioned.
-(Calendar events upsert in place — only the Drive archive versions, due to the MCP
-limitation.)
+**Chart PNGs (when `style.charts`):** v2.0 covers the markdown upload
+only. PNG upload via the Python Drive client lands in a follow-up slice
+— for now, the markdown's chart links point at the local
+`briefings/charts/YYYY-MM-DD/` directory.
 
 ### Step 9 — Print summary to user
 
@@ -336,3 +357,7 @@ Same overall structure with these differences:
 - ✅ Step A: econ-indicator-explainer with 31 indicator cards + lookup script
 - ✅ Step B: render/alerts/compose scripts + tests + JSON schema + sample data
 - ✅ No-IB mode toggle added — ready for Phase 1 dry-run on Claude Code Web
+- ✅ v2.0: Python-direct Calendar + Drive writes (`write_brief_outputs.py`,
+  `google_calendar_client.py`, `google_drive_client.py`). Replaces the
+  LLM/MCP write path that produced the 2026-05-27 dupe storm. v2.1 adds the
+  back-to-back idempotency test + multi-match cleanup.

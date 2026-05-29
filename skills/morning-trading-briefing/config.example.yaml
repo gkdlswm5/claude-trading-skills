@@ -34,6 +34,23 @@ drive:
   briefings_folder_id: ""   # Drive folder ID where dated .md files land
   filename_pattern: "briefings/{date}-{mode}.md"   # {date}=YYYY-MM-DD, {mode}=morning|afternoon
 
+# ---- Google API credentials (v2.0+) ----
+# Paths to the OAuth files for the Python-direct write path
+# (scripts/write_brief_outputs.py). Keep them OUTSIDE the repo — this is a
+# public repo and one slip in .gitignore would leak the secret.
+#
+# First-run (PC only — Hostinger reuses the resulting token.json):
+#   python3 skills/morning-trading-briefing/scripts/google_calendar_client.py \
+#     --authenticate \
+#     --credentials ~/.config/morning-briefing/credentials.json \
+#     --token       ~/.config/morning-briefing/token.json
+#
+# Tilde-expansion works on both Windows and POSIX. See
+# references/GOOGLE_API_SETUP.md.
+google:
+  credentials_path: "~/.config/morning-briefing/credentials.json"
+  token_path: "~/.config/morning-briefing/token.json"
+
 # ---- Watchlist ----
 # Tickers you don't necessarily hold but want covered in news/earnings/flow.
 # When ib_integration=false, this list IS your "holdings" for the purposes of
