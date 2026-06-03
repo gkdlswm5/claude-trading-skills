@@ -25,22 +25,30 @@ When `ib_integration: false`, the watchlist takes over as the proxy for "holding
 
 ## Pipeline overview
 
-The skill is hybrid: Python scripts handle deterministic work (alert math, template rendering, calendar-event JSON generation); the LLM handles synthesis (assembling sub-skill outputs into `brief_data.json`, writing the "must-read top 3", calling MCP tools to write events + Drive files).
+The skill is hybrid, and the **LLM/Python boundary is `brief_data.json`**: the LLM
+does synthesis only (assembling sub-skill outputs into `brief_data.json` and
+writing the "must-read top 3"), then stops. Everything downstream is deterministic
+Python — alert math, template rendering, calendar-event generation, and (as of
+v2.0) the writes themselves. `write_brief_outputs.py` reads `brief_data.json`,
+renders the markdown + builds the events, and calls the Google Calendar + Drive
+APIs **directly** (no LLM, no MCP, in the write loop). This is what makes re-runs
+idempotent — events upsert by `mtb-key` and the Drive file overwrites in place.
 
 ```
-┌──────────────┐      ┌─────────────────┐      ┌───────────────┐
-│  Sub-skills  │─────▶│  LLM assembles  │─────▶│ compose_brief │
-│ (ib-*, econ- │      │ brief_data.json │      │ render +      │
-│  calendar,   │      └────────┬────────┘      │ events.json   │
-│  scanner, …) │               │               └───────┬───────┘
-└──────────────┘               │                       │
-                               ▼                       ▼
-                        check_alerts.py        ┌───────────────┐
-                        lookup_indicator.py    │ MCP writes:   │
-                                               │  Calendar     │
-                                               │  Drive        │
-                                               └───────────────┘
+┌──────────────┐      ┌─────────────────┐      ┌──────────────────────┐
+│  Sub-skills  │─────▶│  LLM assembles  │─────▶│ write_brief_outputs  │
+│ (ib-*, econ- │      │ brief_data.json │      │  render + build      │
+│  calendar,   │      └────────┬────────┘      │  events (mtb-key)    │
+│  scanner, …) │               │               └──────────┬───────────┘
+└──────────────┘               │                          │
+                               ▼              ┌────────────┴───────────┐
+                        check_alerts.py       ▼                        ▼
+                        lookup_indicator.py  Google Calendar API   Google Drive API
+                                             (upsert_event)        (upsert_markdown)
 ```
+
+> The LLM never calls Calendar/Drive itself. Letting the creative model do
+> mechanical bookkeeping is exactly what produced duplicate events before v2.0.
 
 ## Step-by-step procedure (morning mode)
 
@@ -206,48 +214,50 @@ python3 skills/morning-trading-briefing/scripts/technicals.py --data /tmp/series
 Put the result on brief_data `key_levels` + `risk_regime`. The renderer shows a Key
 levels table and a "Regime:" line; the digest carries the regime one-liner.
 
-**Render + events:**
+**Render preview (optional):** to eyeball the markdown before any writes, run the
+writer in dry-run — it renders + builds events locally and touches nothing remote:
 
 ```bash
-python3 skills/morning-trading-briefing/scripts/compose_brief.py \
+python3 skills/morning-trading-briefing/scripts/write_brief_outputs.py \
+  --input /tmp/brief_data.json \
+  --config skills/morning-trading-briefing/config.yaml \
+  --out-dir briefings/ --dry-run
+```
+
+Produces locally (also produced by the real run in Step 7):
+- `briefings/YYYY-MM-DD-morning.md` — full markdown
+- `briefings/YYYY-MM-DD-morning.events.json` — events that *would* be written (debug artifact)
+
+### Step 7 — Write outputs (Calendar + Drive, deterministic Python)
+
+A single command — no per-event LLM/MCP work. `write_brief_outputs.py` reads
+`brief_data.json`, renders the markdown, builds the events, and writes them
+directly to the Google Calendar + Drive APIs:
+
+```bash
+python3 skills/morning-trading-briefing/scripts/write_brief_outputs.py \
   --input /tmp/brief_data.json \
   --config skills/morning-trading-briefing/config.yaml \
   --out-dir briefings/
 ```
 
-Produces:
-- `briefings/YYYY-MM-DD-morning.md` — full markdown
-- `briefings/YYYY-MM-DD-morning.events.json` — list of calendar events to create
+Flags: `--dry-run` (local files only, no remote writes), `--skip-calendar`,
+`--skip-drive`. Credentials default to `~/.config/morning-briefing/{credentials,
+token}.json` (override with `--credentials` / `--token`, or set `MTB_CONFIG_DIR`).
+One-time OAuth setup: `references/GOOGLE_API_SETUP.md`.
 
-### Step 7 — Write to Google Calendar (skip if --skip-calendar or --dry-run)
+**Idempotency is built in — this is the v2.0 fix for the duplicate-event bug:**
+- **Calendar** — each event is upserted by its `mtb-key` (embedded in the
+  description as `<!-- mtb-key: ... -->`). The writer scans the day, *patches* the
+  event carrying that key, else *inserts*. Stray duplicates of a key from a prior
+  bad run collapse back to one. Re-running the brief (e.g. an intraday refresh)
+  never duplicates.
+- **Drive** — the canonical `YYYY-MM-DD-{morning|afternoon}.md` is overwritten in
+  place (same file ID), not versioned. (The direct API supports content update,
+  which the old MCP path could not — that limitation is gone.)
 
-**Upsert, don't blindly create** — so a manual re-run (e.g. an intraday news refresh
-after the morning auto-run) updates the day's events instead of duplicating them.
-Each composed event carries a `dedupKey` (e.g. `mtb:2026-05-27:macro_events:cpi`),
-also embedded in its description as `<!-- mtb-key: ... -->`.
-
-Procedure per event:
-1. **Find existing.** `list_events` for the event's calendar on `data.date`
-   (`fullText: "mtb:<date>"` narrows to this skill's managed events). Match the
-   row whose description contains the same `mtb-key` marker.
-2. **Update or create.** If matched → `update_event(eventId, …)` with the fresh
-   `summary`/`startTime`/`endTime`/`timeZone`/`description`/`colorId`. If not →
-   `create_event(…)`. Map fields directly:
-
-| events.json field | MCP param |
-|---|---|
-| `summary` | `summary` |
-| `startTime` | `startTime` |
-| `endTime` | `endTime` |
-| `timeZone` | `timeZone` |
-| `calendarId` | `calendarId` |
-| `description` | `description` (keep the `mtb-key` marker — it's the upsert anchor) |
-| `colorId` | `colorId` |
-| `allDay` | `allDay` (all-day events: My Positions summary + Market Updates digest) |
-
-`dedupKey` is not an MCP param — it's the match anchor, already inside `description`.
-
-If a Calendar MCP call fails (invalid calendar ID, network), log it and continue with the others — don't abort the whole briefing.
+A failed single event/file is logged to stderr and the run continues; the script
+exits non-zero if any requested write errored, and prints a summary (see Step 8).
 
 Calendar routing (each calendar is optional — a missing `config.yaml` key skips it):
 - **Macro Events** — timed econ events (minor filtered, sorted by impact, `[HIGH/MED/LOW]` tag + color: red/banana/graphite) + voter Fed speakers
@@ -255,38 +265,23 @@ Calendar routing (each calendar is optional — a missing `config.yaml` key skip
 - **My Positions** — all-day summary carrying the full rendered brief
 - **Market Updates** — all-day **digest**: snapshot + must-reads + overnight + energy catalysts + pre-market movers + geopolitical wrap (the "soft / narrative context" lane; emitted only when `market_updates` is set)
 
-### Step 8 — Archive to Drive (skip if --skip-drive or --dry-run)
+> **Charts (when `style.charts`):** direct-API PNG upload is **not yet wired into**
+> `write_brief_outputs.py` — chart archiving to Drive is a follow-up. The markdown
+> and calendar text (inline sparklines) are fully covered today.
 
-Upload the rendered `.md` to the Drive `briefings_folder_id` from config via Drive MCP `create_file`. Base filename: `YYYY-MM-DD-morning.md`. MIME type: `text/markdown`.
+### Step 8 — Summary
 
-**Chart PNGs (when `style.charts`):** upload each PNG from the Step 6 manifest via
-`create_file` (base64 content, `contentMimeType: image/png`, same `parentId`). Take
-the returned file link, set it as the manifest entry's `url`, and ensure brief_data
-`charts` carries the manifest so the markdown links resolve. Re-run versioning works
-the same way as the `.md` (charts live under a dated `charts/YYYY-MM-DD/` subfolder).
-
-**Re-run handling (Drive can't update file content via MCP).** The Drive MCP
-exposes `create_file` / `search_files` but no update-content or delete tool, so a
-same-name re-upload would create a duplicate. On re-run: `search_files` for the
-base name in the folder; if it already exists, upload under a versioned name
-`YYYY-MM-DD-morning-rHHMM.md` (ET) instead of duplicating the base. The base file
-stays the canonical morning archive; manual refreshes are clearly versioned.
-(Calendar events upsert in place — only the Drive archive versions, due to the MCP
-limitation.)
-
-### Step 9 — Print summary to user
+`write_brief_outputs.py` prints its own summary to stderr:
 
 ```
 Morning Brief written: briefings/2026-05-21-morning.md (5.8KB)
-  Calendar events created: 5
-    Macro Events: 3 (CPI, ECB, Powell)
-    Earnings: 1 (NVDA)
-    My Positions: 1 (summary)
-  Drive: briefings/2026-05-21-morning.md uploaded
-  Action items: 1 stop alert (TLT), 1 short-leg alert (NVDA Jun20 145C)
+  Calendar events upserted: 5/5
+  Drive: markdown uploaded (canonical overwrite)
 ```
 
-In no-IB mode the "Action items" line is omitted.
+Relay it to the user, and in IB mode append the action-items line you assembled
+upstream (e.g. `Action items: 1 stop alert (TLT), 1 short-leg alert (NVDA Jun20
+145C)`). In no-IB mode the "Action items" line is omitted.
 
 ## No-IB mode: what changes
 
@@ -300,7 +295,7 @@ When `integration.ib_integration: false`:
 | Step 4 — `earnings_today.my_positions` | Empty list. All earnings go in `megacaps` cut. |
 | Step 5 — must-read | Reference watchlist tickers instead of holdings. |
 | Step 7 — Calendar events | Macro Events + Earnings calendars get fully populated. My Positions calendar gets only the all-day summary event (no stop/roll alerts). |
-| Step 9 — summary | Omit "Action items" line. |
+| Step 8 — summary | Omit "Action items" line. |
 
 ## Afternoon mode procedure
 
@@ -314,14 +309,18 @@ Same overall structure with these differences:
 
 ### Phase 1 — No-IB (works on Claude Code Web)
 
-1. ☐ Create the 3 Google Calendars manually (see `references/CALENDAR_SETUP.md`)
+1. ☐ Create the 4 Google Calendars manually (see `references/CALENDAR_SETUP.md`)
 2. ☐ Create the Drive folder `Trading Briefings`, grab its ID
-3. ☐ Set `FMP_API_KEY` in your Claude Code Web environment config (web UI)
-4. ☐ `cp config.example.yaml config.yaml`; set `ib_integration: false`; paste calendar + Drive IDs; edit watchlist
-5. ☐ Run `/morning-brief --dry-run` — verify markdown looks right, no events written
-6. ☐ Run `/morning-brief --skip-calendar` — verify Drive upload
-7. ☐ Run `/morning-brief` — full flow, calendar + Drive (no IB sections)
-8. ☐ Run for ~10 sessions; keep the noise log; refine config weekly
+3. ☐ One-time Google OAuth (`references/GOOGLE_API_SETUP.md`): place
+   `credentials.json` in `~/.config/morning-briefing/`, then
+   `python scripts/google_calendar_client.py --authenticate` to mint `token.json`
+   (the command also prints every calendar ID for the next step)
+4. ☐ Set `FMP_API_KEY` in your Claude Code Web environment config (web UI)
+5. ☐ `cp config.example.yaml config.yaml`; set `ib_integration: false`; paste the 4 calendar IDs + Drive folder ID; edit watchlist
+6. ☐ Run `/morning-brief --dry-run` — verify markdown looks right, no events written
+7. ☐ Run `/morning-brief --skip-calendar` — verify Drive upload
+8. ☐ Run `/morning-brief` — full flow, calendar + Drive (no IB sections); run it twice and confirm the event count does **not** grow (idempotency)
+9. ☐ Run for ~10 sessions; keep the noise log; refine config weekly
 
 ### Phase 2 — Add IB (when you have TWS/IB Gateway reachable)
 

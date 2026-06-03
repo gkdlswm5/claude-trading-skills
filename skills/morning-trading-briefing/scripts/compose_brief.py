@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Top-level composer: takes a brief_data JSON, renders the markdown brief,
-and emits the calendar-events JSON for the LLM to push via the Google Calendar MCP.
+and emits the calendar-events JSON.
 
 Usage:
     compose_brief.py --input brief_data.json --out-dir briefings/
@@ -10,9 +10,10 @@ Produces in --out-dir (default: ./briefings/):
     YYYY-MM-DD-{morning|afternoon}.md          # the rendered brief
     YYYY-MM-DD-{morning|afternoon}.events.json # list of calendar events to create
 
-The events.json is consumed by the orchestrator skill, which feeds each event to
-the Google Calendar MCP create_event tool. We don't call MCP from Python because
-MCP tools are LLM-mediated, not direct HTTP.
+As of v2.0 the writes are deterministic Python, not LLM/MCP: `write_brief_outputs.py`
+imports `build_calendar_events()` + `render()` from this module and pushes the
+results straight to the Google Calendar + Drive APIs (upsert by mtb-key). The
+events.json file is kept as a debug/inspection artifact of what would be written.
 """
 from __future__ import annotations
 
@@ -33,8 +34,8 @@ DEFAULT_TZ = "America/New_York"
 def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     """Format YYYY-MM-DD + HH:MM as ISO 8601 without zone suffix.
 
-    The Calendar MCP create_event accepts a separate timeZone param and reads
-    start/end as naive local-time ISO when timeZone is supplied.
+    Calendar v3 reads start/end as naive local-time ISO when a separate
+    timeZone is supplied (google_calendar_client._to_google_event pairs the two).
     """
     return f"{date_str}T{hhmm}:00"
 
@@ -146,10 +147,13 @@ def _market_updates_digest(data: dict) -> str:
 
 
 def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
-    """Return list of events ready to feed to create_event MCP calls.
+    """Return the list of events for the day, each stamped with an mtb-key.
 
-    Each event: {calendarId, summary, startTime, endTime, timeZone,
-                 description, color hint}.
+    Each event: {calendarId, summary, startTime, endTime, timeZone, description,
+    colorId, dedupKey, allDay?}. Consumed by write_brief_outputs.py, which
+    upserts each via google_calendar_client.upsert_event (match-by-mtb-key,
+    patch-or-create). The mtb-key is embedded in `description` as the upsert
+    anchor (see the finalize loop below).
     """
     events: list[dict] = []
     date_str = data.get("date") or date.today().isoformat()
@@ -298,9 +302,10 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
         )
 
     # Finalize: stamp each event with a stable dedup key + embed it as a hidden
-    # HTML comment in the description. The orchestrator upserts by searching the
-    # day's events for the "mtb-key" marker — update_event if found, else create.
-    # This makes re-runs (manual news refresh after the auto-run) idempotent.
+    # HTML comment in the description. write_brief_outputs.py (via
+    # google_calendar_client.upsert_event) finds the day's event carrying the same
+    # "mtb-key" marker — patch if found, else insert. This makes re-runs (manual
+    # news refresh after the auto-run) idempotent.
     lane_by_id = {v: k for k, v in calendars.items()}
     for ev in events:
         lane = lane_by_id.get(ev["calendarId"], "event")
