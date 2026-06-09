@@ -18,6 +18,7 @@ flow had the LLM itself call Google via MCP for each event — that path
 duplicated events across re-runs (see state/HANDOFF.md for the 2026-05-27
 incident).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,6 +30,7 @@ from pathlib import Path
 
 from event_filters import filter_releases, filter_speakers, impact_color, impact_tag
 from render_brief import render
+from signals import as_of_et
 from sparkline import spark_label
 
 DEFAULT_TZ = "America/New_York"
@@ -97,12 +99,18 @@ def _market_updates_digest(data: dict) -> str:
     on = data.get("overnight", {})
     if on:
         asia = " / ".join(
-            f"{lbl} {on[k]}" for lbl, k in [("Nikkei", "nikkei"), ("HSI", "hsi"), ("KOSPI", "kospi")] if on.get(k)
+            f"{lbl} {on[k]}"
+            for lbl, k in [("Nikkei", "nikkei"), ("HSI", "hsi"), ("KOSPI", "kospi")]
+            if on.get(k)
         )
         eur = " / ".join(
-            f"{lbl} {on[k]}" for lbl, k in [("DAX", "dax"), ("FTSE", "ftse"), ("STOXX", "stoxx")] if on.get(k)
+            f"{lbl} {on[k]}"
+            for lbl, k in [("DAX", "dax"), ("FTSE", "ftse"), ("STOXX", "stoxx")]
+            if on.get(k)
         )
-        wrap = "; ".join(p for p in [f"Asia — {asia}" if asia else "", f"Europe — {eur}" if eur else ""] if p)
+        wrap = "; ".join(
+            p for p in [f"Asia — {asia}" if asia else "", f"Europe — {eur}" if eur else ""] if p
+        )
         if wrap:
             parts.append(f"\n**Overnight:** {wrap}")
         if on.get("top_headline"):
@@ -128,7 +136,12 @@ def _market_updates_digest(data: dict) -> str:
     trends = data.get("trends", {})
     if trends:
         spark_bits = []
-        for key, lbl, unit in [("spy", "SPY", ""), ("qqq", "QQQ", ""), ("us10y", "10Y", "%"), ("vix", "VIX", "")]:
+        for key, lbl, unit in [
+            ("spy", "SPY", ""),
+            ("qqq", "QQQ", ""),
+            ("us10y", "10Y", "%"),
+            ("vix", "VIX", ""),
+        ]:
             if trends.get(key):
                 sl = spark_label(lbl, trends[key], unit=unit)
                 if sl:
@@ -234,7 +247,9 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                 merged[t] = e  # overwrites megacap entry if same ticker
         # One ranked all-day digest. Importance: your positions first, then by
         # implied move (biggest first).
-        ranked = sorted(merged.values(), key=lambda e: (0 if e.get("position_summary") else 1, -_implied(e)))
+        ranked = sorted(
+            merged.values(), key=lambda e: (0 if e.get("position_summary") else 1, -_implied(e))
+        )
         if ranked:
             lines = []
             for i, e in enumerate(ranked, 1):
@@ -245,7 +260,9 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                     f"Rev {e.get('rev_est', '?')}{flag}"
                 )
                 if e.get("position_summary"):
-                    lines.append(f"   exposure: {e['position_summary']} (delta {e.get('delta', '?')})")
+                    lines.append(
+                        f"   exposure: {e['position_summary']} (delta {e.get('delta', '?')})"
+                    )
                 if e.get("hedge_recommendation"):
                     lines.append(f"   recommendation: {e['hedge_recommendation']}")
             d = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -307,11 +324,21 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
     # searching the day's events for the "mtb-key" marker — patch if found,
     # else create. This makes re-runs (manual news refresh after the auto-run)
     # idempotent.
+    #
+    # v2.2: append a snapshot stamp "(as of HH:MM ET)" to all-day event titles
+    # so the calendar tile shows when the snapshot was taken. CRITICAL: the
+    # dedup key is computed from the ORIGINAL summary BEFORE the stamp is
+    # added, and _slug() strips parenthetical content anyway — so a re-run at a
+    # different time updates the same event in place rather than duplicating.
+    as_of = as_of_et(data.get("generated_at_et"))
+    stamp = f" (as of {as_of})" if as_of else ""
     lane_by_id = {v: k for k, v in calendars.items()}
     for ev in events:
         lane = lane_by_id.get(ev["calendarId"], "event")
         key = f"mtb:{date_str}:{lane}:{_slug(ev['summary'])}"
         ev["dedupKey"] = key
+        if ev.get("allDay") and stamp:
+            ev["summary"] = f"{ev['summary']}{stamp}"
         ev["description"] = f"{ev['description']}\n\n<!-- mtb-key: {key} -->"
 
     return events
@@ -344,7 +371,9 @@ def main() -> int:
     ap.add_argument("--input", type=Path, required=True, help="brief_data.json")
     ap.add_argument("--config", type=Path, help="config.yaml for calendar IDs")
     ap.add_argument("--out-dir", type=Path, default=Path("briefings"))
-    ap.add_argument("--dry-run", action="store_true", help="Don't write events.json — markdown only")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="Don't write events.json — markdown only"
+    )
     args = ap.parse_args()
 
     data = json.loads(args.input.read_text(encoding="utf-8"))

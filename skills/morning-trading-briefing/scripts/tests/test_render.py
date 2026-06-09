@@ -2,6 +2,7 @@
 
 Run: python3 -m pytest skills/morning-trading-briefing/scripts/tests/
 """
+
 import json
 import subprocess
 import sys
@@ -31,6 +32,37 @@ def test_morning_sample_renders():
     assert "Scanner-bullish top 3" in md
 
 
+# --------------------------------------------------------------------------- #
+# v2.2 — "Snapshot as of" header + good/bad emoji signals
+# In-process render() (not subprocess) so non-ASCII emoji don't hit the
+# Windows cp1252 stdout-encoding wall.
+# --------------------------------------------------------------------------- #
+def _render_inproc(json_path):
+    sys.path.insert(0, str(SCRIPTS))
+    from render_brief import render
+
+    return render(json.loads(Path(json_path).read_text(encoding="utf-8")))
+
+
+def test_morning_header_uses_snapshot_as_of():
+    md = _render_inproc(EXAMPLES / "sample_morning.json")
+    assert "Snapshot as of 07:00 ET" in md
+    assert "Generated " not in md  # old label replaced
+
+
+def test_afternoon_header_uses_snapshot_as_of():
+    md = _render_inproc(EXAMPLES / "sample_afternoon.json")
+    assert "Snapshot as of" in md
+
+
+def test_morning_premarket_change_gets_signal():
+    from signals import BAD, GOOD
+
+    md = _render_inproc(EXAMPLES / "sample_morning.json")
+    # spy_premarket carries a signed change → should be tagged green or red.
+    assert (GOOD in md) or (BAD in md)
+
+
 def test_afternoon_sample_renders():
     md = _render(EXAMPLES / "sample_afternoon.json")
     assert "# Afternoon Brief" in md
@@ -50,6 +82,7 @@ def test_empty_sections_dont_crash():
         "must_read": ["Slow news day."],
     }
     import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(minimal, f)
         path = f.name
