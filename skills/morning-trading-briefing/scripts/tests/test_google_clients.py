@@ -131,7 +131,72 @@ def _upsert_service(existing: list[dict]) -> MagicMock:
     service.events.return_value.patch.return_value.execute.return_value = {
         "id": "existing_event_id"
     }
+    service.events.return_value.delete.return_value.execute.return_value = None
     return service
+
+
+class _Exec:
+    """Tiny wrapper so a built request's `.execute()` returns a preset value."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def execute(self):
+        return self._value
+
+
+class _StatefulCalendar:
+    """Minimal in-memory fake of the Calendar discovery Resource.
+
+    Supports the events().list/insert/patch/delete().execute() chain that
+    google_calendar_client uses, holding real state so back-to-back upserts
+    can be asserted on. Time-window filtering is ignored (the client filters
+    by mtb-key, which is the behavior under test); list() returns all events
+    in one page.
+    """
+
+    def __init__(self, seed: list[dict] | None = None):
+        self._store: list[dict] = [dict(e) for e in (seed or [])]
+        self._next = 1
+
+    # discovery-style chain: events() returns self; verbs return _Exec.
+    def events(self):
+        return self
+
+    def list(self, **kwargs):
+        return _Exec({"items": [dict(e) for e in self._store]})
+
+    def insert(self, calendarId=None, body=None):
+        event = dict(body or {}, id=f"gen{self._next}")
+        self._next += 1
+        self._store.append(event)
+        return _Exec(dict(event))
+
+    def patch(self, calendarId=None, eventId=None, body=None):
+        for e in self._store:
+            if e["id"] == eventId:
+                e.update(body or {})
+                return _Exec(dict(e))
+        raise KeyError(eventId)
+
+    def delete(self, calendarId=None, eventId=None):
+        self._store = [e for e in self._store if e["id"] != eventId]
+        return _Exec(None)
+
+    # assertion helpers
+    def count_with_key(self, key: str) -> int:
+        return sum(
+            1 for e in self._store if extract_mtb_key(e.get("description")) == key
+        )
+
+    def only_id_with_key(self, key: str) -> str:
+        ids = [
+            e["id"]
+            for e in self._store
+            if extract_mtb_key(e.get("description")) == key
+        ]
+        assert len(ids) == 1, f"expected exactly one event with key, got {ids}"
+        return ids[0]
 
 
 def test_upsert_event_inserts_when_no_match():
@@ -166,11 +231,11 @@ def test_upsert_event_ignores_non_matching_existing():
     service.events.return_value.insert.assert_called_once()
 
 
-def test_upsert_event_patches_first_when_multiple_match():
-    """v2.0: when an old run left dupes, patch the first; ignore extras.
+def test_upsert_event_patches_first_and_deletes_extras_when_multiple_match():
+    """v2.1: when an old run left dupes, patch the first and delete the rest.
 
-    v2.1 will delete the extras to converge fully. The point of this test
-    is to lock in v2.0 behavior so v2.1 has a clear diff to land against.
+    This is the self-healing behavior that recovers from the 2026-05-27
+    incident — a rerun collapses N duplicates of a key back down to one.
     """
     dup_desc = f"<!-- mtb-key: {KEY} -->"
     existing = [
@@ -180,10 +245,55 @@ def test_upsert_event_patches_first_when_multiple_match():
     ]
     service = _upsert_service(existing=existing)
     upsert_event(service, "cal@x", KEY, PAYLOAD, "2026-05-27")
+
+    # First match is patched (updated in place), not deleted.
     service.events.return_value.patch.assert_called_once()
-    assert (
-        service.events.return_value.patch.call_args.kwargs["eventId"] == "dupe1"
+    assert service.events.return_value.patch.call_args.kwargs["eventId"] == "dupe1"
+
+    # The two extras are deleted so the day converges to one event per key.
+    deleted_ids = [
+        call.kwargs["eventId"]
+        for call in service.events.return_value.delete.call_args_list
+    ]
+    assert sorted(deleted_ids) == ["dupe2", "dupe3"]
+    service.events.return_value.insert.assert_not_called()
+
+
+def test_upsert_event_idempotent_across_back_to_back_runs():
+    """v2.1 rerun assertion (HANDOFF): run the same upsert twice against a
+    stateful fake calendar; the key must resolve to exactly one event both
+    times — no duplicate accumulates on the second pass.
+    """
+    service = _StatefulCalendar()
+    upsert_event(service, "cal@x", KEY, PAYLOAD, "2026-05-27")
+    assert service.count_with_key(KEY) == 1
+    first_id = service.only_id_with_key(KEY)
+
+    # Second back-to-back run with the same payload.
+    upsert_event(service, "cal@x", KEY, PAYLOAD, "2026-05-27")
+    assert service.count_with_key(KEY) == 1
+    # Same event was updated in place, not replaced.
+    assert service.only_id_with_key(KEY) == first_id
+
+
+def test_upsert_event_collapses_preexisting_duplicates_on_first_run():
+    """A stateful end-to-end check that three seeded duplicates collapse to
+    one after a single upsert (and stay at one on a rerun)."""
+    dup_desc = f"body\n<!-- mtb-key: {KEY} -->"
+    service = _StatefulCalendar(
+        seed=[
+            {"id": "seed1", "description": dup_desc},
+            {"id": "seed2", "description": dup_desc},
+            {"id": "seed3", "description": dup_desc},
+        ]
     )
+    assert service.count_with_key(KEY) == 3
+    upsert_event(service, "cal@x", KEY, PAYLOAD, "2026-05-27")
+    assert service.count_with_key(KEY) == 1
+    # The kept event is the first seeded one, patched in place.
+    assert service.only_id_with_key(KEY) == "seed1"
+    upsert_event(service, "cal@x", KEY, PAYLOAD, "2026-05-27")
+    assert service.count_with_key(KEY) == 1
 
 
 def test_upsert_event_rejects_payload_without_mtb_key():
