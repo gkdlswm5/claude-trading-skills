@@ -194,9 +194,11 @@ def upsert_event(
     one. This is the core idempotency primitive — same input always
     produces the same calendar state.
 
-    v2.0 behavior: when multiple existing events match the same mtb-key
-    (a leftover from the 2026-05-27 incident), patch the first and ignore
-    the rest. v2.1 will delete the extras to converge fully.
+    v2.1 behavior: when multiple existing events match the same mtb-key
+    (a leftover from the 2026-05-27 incident), patch the first to the new
+    payload and delete the extras, so the day converges to exactly one
+    event per key. This makes the write self-healing — a rerun cleans up
+    duplicates a prior bad run left behind, not just avoids new ones.
 
     Args:
         service: Authenticated Calendar API client.
@@ -224,11 +226,17 @@ def upsert_event(
     ]
     if matches:
         target = matches[0]
-        return (
+        result = (
             service.events()
             .patch(calendarId=calendar_id, eventId=target["id"], body=event_payload)
             .execute()
         )
+        # Collapse any leftover duplicates of this key down to the one we kept.
+        for dup in matches[1:]:
+            service.events().delete(
+                calendarId=calendar_id, eventId=dup["id"]
+            ).execute()
+        return result
     return service.events().insert(calendarId=calendar_id, body=event_payload).execute()
 
 

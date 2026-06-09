@@ -137,20 +137,26 @@ work it isn't reliable at. v2.0 fixes the root cause.
       multi-match cleanup (delete extras when upsert finds >1 hit), and
       the first real-calendar smoke test against a throwaway calendar.
 
-### v2.1 — Idempotency [partially delivered by v2.0]
+### v2.1 — Idempotency [code complete; live-calendar proof pending]
 - [x] Calendar writer upserts by `mtb-key` (extract from description) —
       landed in v2.0's `google_calendar_client.upsert_event`
 - [x] Drive writer overwrites canonical
       `briefings/YYYY-MM-DD-{morning|afternoon}.md` — landed in v2.0's
       `google_drive_client.upsert_markdown`
+- [x] Multi-match cleanup: `upsert_event` now patches the first match and
+      DELETEs the rest, so a rerun collapses leftover duplicates (the
+      2026-05-27 incident) to one event per key. Self-healing, not just
+      duplicate-avoiding.
+- [x] Unit-level back-to-back idempotency proof: stateful fake-calendar
+      test runs `upsert_event` twice → exactly one event, same ID; plus a
+      "3 seeded dupes collapse to 1, then stay 1" test
+      (`test_google_clients.py`).
 - [ ] Real-calendar idempotency test: run brief 2× back-to-back against
       a throwaway test calendar; verify event count unchanged and event
-      IDs stable
-- [ ] Multi-match cleanup: when `upsert_event` finds >1 existing event
-      with the same mtb-key (leftover from a bad run), patch the first
-      and DELETE the rest. v2.0 patches one and ignores extras.
+      IDs stable. **Blocked on user-side OAuth + `config.yaml` calendar
+      IDs** (see v2.0 user-side items above).
 - [ ] Drive: same back-to-back idempotency proof (file ID stable, content
-      replaced, no duplicate file in folder)
+      replaced, no duplicate file in folder). Same live-calendar blocker.
 
 ### v2.2 — Snapshot consistency
 - [ ] `as_of_utc` captured once in compose_brief.py
