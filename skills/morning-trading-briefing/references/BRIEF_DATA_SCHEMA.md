@@ -128,13 +128,18 @@ The orchestrator skill assembles a single JSON object and passes it through `com
   ],
 
   "earnings_today": {
+    // Optional `market_cap` (v2.3): FMP `marketCap`, as a number or string
+    // ("2.5T", "900B", "450M"). Drives the top-N earnings cap ranking
+    // (market_cap × max(1, implied_move%)); omitted → ranked by implied_move.
     "megacaps": [
       {"ticker": "NVDA", "timing": "BMO|AMC",
-       "eps_est": "0.65", "rev_est": "32.5B", "implied_move": "8.5"}
+       "eps_est": "0.65", "rev_est": "32.5B", "implied_move": "8.5",
+       "market_cap": "2.9T"}
     ],
     "my_positions": [
       {"ticker": "NVDA", "timing": "AMC",
        "eps_est": "0.65", "rev_est": "32.5B", "implied_move": "8.5",
+       "market_cap": "2.9T",
        "position_summary": "...", "delta": "+0.42 net",
        "hedge_recommendation": "..."}
     ]
