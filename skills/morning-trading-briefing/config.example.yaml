@@ -128,6 +128,19 @@ econ_releases:
     - OPEC+ Meeting
     - EIA Crude Oil Inventories
 
+# ---- Noise reduction (v2.3) ----
+# The orchestrator mirrors these into brief_data.json's `filters` block so the
+# deterministic scripts (compose_brief.py / event_filters.py) apply the same
+# suppression. Target: <= 12 calendar events/day across all sub-calendars.
+filters:
+  drop_minor_econ: true   # drop Low-impact / denylisted econ (regional Fed, MBA, bills)
+  voters_only: true       # Fed speakers: keep voters with a real topic only
+  include_tier3: false    # v2.3: also fold out Tier-3 macro from the calendar.
+                          # Notability override still keeps a quiet (all-minor) day from blanking.
+  max_earnings: 8         # cap the earnings digest to top N by importance
+                          # (market_cap x max(1, implied_move%); your positions first).
+                          # 0 disables the cap.
+
 # ---- Sections to include ----
 sections:
   morning:

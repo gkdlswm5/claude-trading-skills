@@ -28,7 +28,13 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from event_filters import filter_releases, filter_speakers, impact_color, impact_tag
+from event_filters import (
+    cap_earnings,
+    filter_releases,
+    filter_speakers,
+    impact_color,
+    impact_tag,
+)
 from render_brief import render
 from signals import as_of_et
 from sparkline import spark_label
@@ -44,14 +50,6 @@ def _et_iso(date_str: str, hhmm: str, tz: str = DEFAULT_TZ) -> str:
     alongside. write_brief_outputs.py wraps these into the API shape.
     """
     return f"{date_str}T{hhmm}:00"
-
-
-def _implied(earn: dict) -> float:
-    """Parse implied_move to a float for ranking; missing/garbage sorts last."""
-    try:
-        return float(str(earn.get("implied_move", "")).strip().rstrip("%"))
-    except (ValueError, TypeError):
-        return -1.0
 
 
 def _slug(summary: str) -> str:
@@ -181,6 +179,7 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
         releases = filter_releases(
             data.get("econ_releases", []),
             drop_minor=flt.get("drop_minor_econ", True),
+            include_tier3=flt.get("include_tier3", True),
         )
         for r in releases:
             time_et = r.get("time_et", "08:30")
@@ -245,11 +244,14 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
             t = e.get("ticker")
             if t:
                 merged[t] = e  # overwrites megacap entry if same ticker
-        # One ranked all-day digest. Importance: your positions first, then by
-        # implied move (biggest first).
-        ranked = sorted(
-            merged.values(), key=lambda e: (0 if e.get("position_summary") else 1, -_implied(e))
-        )
+        # One ranked all-day digest, capped to the top N (v2.3 noise reduction).
+        # Importance: your positions first, then by earnings_importance
+        # (market_cap × max(1, implied_move%), falling back to implied move when
+        # market_cap is absent). max_earnings <= 0 disables the cap.
+        max_earnings = flt.get("max_earnings", 8)
+        total_reporting = len(merged)
+        ranked = cap_earnings(list(merged.values()), max_count=max_earnings)
+        capped = total_reporting > len(ranked)
         if ranked:
             lines = []
             for i, e in enumerate(ranked, 1):
@@ -265,12 +267,19 @@ def build_calendar_events(data: dict, calendars: dict) -> list[dict]:
                     )
                 if e.get("hedge_recommendation"):
                     lines.append(f"   recommendation: {e['hedge_recommendation']}")
+            if capped:
+                lines.append(
+                    f"\n(Top {len(ranked)} of {total_reporting} reporting today, by importance.)"
+                )
             d = datetime.strptime(date_str, "%Y-%m-%d").date()
             nxt = d.fromordinal(d.toordinal() + 1)
+            summary_count = (
+                f"top {len(ranked)} of {total_reporting}" if capped else f"{len(ranked)}"
+            )
             events.append(
                 {
                     "calendarId": earn_id,
-                    "summary": f"Earnings — {len(ranked)} reporting (by importance)",
+                    "summary": f"Earnings — {summary_count} reporting (by importance)",
                     "startTime": f"{d.isoformat()}T00:00:00Z",
                     "endTime": f"{nxt.isoformat()}T00:00:00Z",
                     "timeZone": DEFAULT_TZ,

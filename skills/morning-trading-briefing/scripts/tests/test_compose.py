@@ -158,6 +158,77 @@ def test_as_of_stamp_does_not_change_dedup_key():
     assert pos["dedupKey"] == "mtb:2026-05-21:my_positions:morning-brief"
 
 
+# --------------------------------------------------------------------------- #
+# v2.3 — earnings cap + tier-3, in-process via build_calendar_events
+# --------------------------------------------------------------------------- #
+def _bce():
+    sys.path.insert(0, str(SCRIPTS))
+    from compose_brief import build_calendar_events
+
+    return build_calendar_events
+
+
+def test_earnings_digest_capped_to_max():
+    build = _bce()
+    megacaps = [
+        {"ticker": f"T{i}", "timing": "BMO", "implied_move": "5", "market_cap": f"{i}B"}
+        for i in range(1, 13)  # 12 names
+    ]
+    data = {
+        "mode": "morning",
+        "date": "2026-05-27",
+        "earnings_today": {"megacaps": megacaps, "my_positions": []},
+        "filters": {"max_earnings": 8},
+    }
+    events = build(data, {"earnings": "earn@x.com"})
+    digest = [e for e in events if e["calendarId"] == "earn@x.com"][0]
+    # 12 reporting, capped to 8 → summary + footer reflect the cap.
+    assert "top 8 of 12" in digest["summary"]
+    assert "Top 8 of 12 reporting" in digest["description"]
+    # Exactly 8 numbered entry lines (lines like "1. T9 (BMO) — ...").
+    import re as _re
+
+    numbered = [
+        ln for ln in digest["description"].splitlines() if _re.match(r"\d+\.\s", ln.strip())
+    ]
+    assert len(numbered) == 8
+
+
+def test_earnings_cap_disabled_with_zero():
+    build = _bce()
+    megacaps = [
+        {"ticker": f"T{i}", "timing": "BMO", "implied_move": "5", "market_cap": f"{i}B"}
+        for i in range(1, 13)
+    ]
+    data = {
+        "mode": "morning",
+        "date": "2026-05-27",
+        "earnings_today": {"megacaps": megacaps, "my_positions": []},
+        "filters": {"max_earnings": 0},
+    }
+    events = build(data, {"earnings": "earn@x.com"})
+    digest = [e for e in events if e["calendarId"] == "earn@x.com"][0]
+    assert "12 reporting" in digest["summary"]
+    assert "top" not in digest["summary"].lower()
+
+
+def test_tier3_off_drops_low_impact_macro():
+    build = _bce()
+    data = {
+        "mode": "morning",
+        "date": "2026-05-27",
+        "econ_releases": [
+            {"name": "CPI", "impact": "High", "time_et": "08:30"},
+            {"name": "Dallas Fed Services", "impact": "Low", "time_et": "10:30"},
+        ],
+        "filters": {"drop_minor_econ": False, "include_tier3": False},
+    }
+    events = build(data, {"macro_events": "macro@x.com"})
+    names = [e["summary"] for e in events if e["calendarId"] == "macro@x.com"]
+    assert any("CPI" in n for n in names)
+    assert not any("Dallas Fed" in n for n in names)
+
+
 def test_no_generated_at_means_no_stamp():
     """If generated_at_et is absent, titles stay clean (graceful degrade)."""
     data = json.loads((EXAMPLES / "sample_morning.json").read_text())
