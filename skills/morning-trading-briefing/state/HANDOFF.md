@@ -158,11 +158,30 @@ work it isn't reliable at. v2.0 fixes the root cause.
 - [ ] Drive: same back-to-back idempotency proof (file ID stable, content
       replaced, no duplicate file in folder). Same live-calendar blocker.
 
-### v2.2 — Snapshot consistency
-- [ ] `as_of_utc` captured once in compose_brief.py
-- [ ] Quote-fetch helpers take + use `as_of`
-- [ ] Header renders "Snapshot as of HH:MM ET"
-- [ ] All-day event titles include as-of stamp
+### v2.2 — Snapshot consistency + readability signals [code complete]
+- [x] Single snapshot moment: `signals.as_of_et()` derives one "HH:MM ET"
+      from the `generated_at_et` the LLM already captures in brief_data.json.
+      (In the v2.0+ architecture the LLM assembles all quotes into the JSON —
+      there are no Python quote-fetch helpers to thread through; the single
+      `generated_at_et` IS the captured-once snapshot moment. This is the
+      faithful reading of the original "capture as_of_utc once" intent.)
+- [x] Header renders "Snapshot as of HH:MM ET" (morning + afternoon),
+      replacing the old "Generated …" label.
+- [x] All-day event titles include the as-of stamp as "(as of HH:MM ET)".
+      CRITICAL: the stamp is in PARENS and added AFTER the dedup key is
+      computed, so `_slug()` strips it and v2.1 idempotency holds — verified
+      live (run @07:00 then @09:30 → titles update in place, event count
+      6→6, no duplicates).
+- [x] Readability signals (folded in): `signals.signal()/tag()` add 🟢/🔴
+      good-for-your-book markers (standard risk-on: indices/P&L up = 🟢;
+      VIX/yields/DXY up = 🔴) on the snapshot change, P&L, and movers only.
+      Emoji chosen because it's the ONLY formatting that survives all three
+      surfaces (PDF, calendar body, calendar title) — verified empirically;
+      Google strips inline color spans. Colored text reserved for the PDF.
+- [ ] HTML "View full brief (PDF)" link in the My Positions event body —
+      `<a href>` confirmed to survive in calendar descriptions, but BLOCKED
+      on Drive archiving being enabled (needs `drive.briefings_folder_id`).
+      Deferred until Drive is turned on.
 
 ### v2.3 — Noise reduction
 - [ ] `macro.include_tier3: false` (default) drops Tier-3 macro events

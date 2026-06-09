@@ -12,6 +12,7 @@ This is the deterministic half of step B — given a fully-assembled brief_data
 dict, produce the markdown. Section assembly (calling sub-skills, synthesizing
 the "must-read top 3", etc.) happens upstream in the orchestrator skill.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from event_filters import filter_releases, impact_rank, impact_tag
+from signals import as_of_et, tag
 from sparkline import spark_label
 
 
@@ -57,10 +59,14 @@ def render_morning(d: dict) -> str:
     lines: list[str] = []
     snap = d.get("snapshot", {})
 
+    as_of = as_of_et(d.get("generated_at_et"))
+    # Only spy_premarket is a *change*; dxy/10Y/vix are levels (no up/down sign).
+    spy_pm = snap.get("spy_premarket")
+    spy_pm_str = f" ({tag(spy_pm, metric='spy')})" if spy_pm not in (None, "") else ""
     lines.append(f"# Morning Brief — {_get(d, 'date')}")
     lines.append(
-        f"*Generated {_get(d, 'generated_at_et')} — "
-        f"SPY {_get(snap, 'spy')} ({_get(snap, 'spy_premarket')}) | "
+        f"*Snapshot as of {as_of or _get(d, 'generated_at_et')} — "
+        f"SPY {_get(snap, 'spy')}{spy_pm_str} | "
         f"DXY {_get(snap, 'dxy')} | "
         f"10Y {_get(snap, 'us10y')} | "
         f"VIX {_get(snap, 'vix')}*"
@@ -97,8 +103,8 @@ def render_morning(d: dict) -> str:
         if not any(impact_rank(r.get("impact")) >= 2 for r in releases):
             lines.append("_Light macro day — no high-impact releases scheduled._\n")
         for r in releases:
-            tag = impact_tag(r.get("impact"))
-            tag_str = f"{tag} " if tag else ""
+            imp_tag = impact_tag(r.get("impact"))
+            tag_str = f"{imp_tag} " if imp_tag else ""
             lines.append(
                 f"**{tag_str}{r.get('time_et', '?')} ET — {r.get('name', '?')}** "
                 f"*(consensus {r.get('consensus', 'n/a')} | "
@@ -199,7 +205,15 @@ def render_morning(d: dict) -> str:
         lines.append(
             _table(
                 ["Ticker", "Last", "1d%", "Catalyst"],
-                [[c.get("ticker", "?"), c.get("last", "—"), c.get("chg", "—"), c.get("catalyst", "")] for c in comm],
+                [
+                    [
+                        c.get("ticker", "?"),
+                        c.get("last", "—"),
+                        c.get("chg", "—"),
+                        c.get("catalyst", ""),
+                    ]
+                    for c in comm
+                ],
             )
         )
         if d.get("eia_opec_today"):
@@ -249,7 +263,7 @@ def render_morning(d: dict) -> str:
         lines.append("### Pre-market movers")
         for m in movers:
             lines.append(
-                f"- **{m.get('ticker', '?')}** {m.get('change', '—')} — {m.get('catalyst', '')}"
+                f"- **{m.get('ticker', '?')}** {tag(m.get('change', '—'))} — {m.get('catalyst', '')}"
             )
         lines.append("")
 
@@ -278,7 +292,9 @@ def render_morning(d: dict) -> str:
             lines.append("### Your positions reporting")
             for e in mp:
                 lines.append(f"**{e.get('ticker')} — {e.get('timing', '?')}**")
-                lines.append(f"- EPS est: {e.get('eps_est', '?')} | Rev est: {e.get('rev_est', '?')}")
+                lines.append(
+                    f"- EPS est: {e.get('eps_est', '?')} | Rev est: {e.get('rev_est', '?')}"
+                )
                 lines.append(f"- Implied move from IV: {e.get('implied_move', '?')}%")
                 lines.append(
                     f"- Your exposure: {e.get('position_summary', '?')} "
@@ -299,7 +315,12 @@ def render_morning(d: dict) -> str:
                 _table(
                     ["Ticker", "Qty", "Value", "Overnight P&L"],
                     [
-                        [r.get("ticker", "?"), r.get("qty", "—"), r.get("value", "—"), r.get("pnl_overnight", "—")]
+                        [
+                            r.get("ticker", "?"),
+                            r.get("qty", "—"),
+                            r.get("value", "—"),
+                            r.get("pnl_overnight", "—"),
+                        ]
                         for r in pnl
                     ],
                 )
@@ -388,10 +409,13 @@ def render_afternoon(d: dict) -> str:
     lines: list[str] = []
     snap = d.get("snapshot", {})
 
+    as_of = as_of_et(d.get("generated_at_et"))
+    spy_chg = snap.get("spy_chg")
+    spy_chg_str = f" ({tag(spy_chg, metric='spy')})" if spy_chg not in (None, "") else ""
     lines.append(f"# Afternoon Brief — {_get(d, 'date')}")
     lines.append(
-        f"*Generated {_get(d, 'generated_at_et')} — "
-        f"SPY {_get(snap, 'spy_close')} ({_get(snap, 'spy_chg')}) | "
+        f"*Snapshot as of {as_of or _get(d, 'generated_at_et')} — "
+        f"SPY {_get(snap, 'spy_close')}{spy_chg_str} | "
         f"DXY {_get(snap, 'dxy_close')} | "
         f"10Y {_get(snap, 'us10y_close')} | "
         f"VIX {_get(snap, 'vix_close')}*"
@@ -416,14 +440,18 @@ def render_afternoon(d: dict) -> str:
                 _table(
                     ["Ticker", "Day P&L", "Day %"],
                     [
-                        [r.get("ticker", "?"), r.get("day_pnl", "—"), r.get("day_pct", "—")]
+                        [
+                            r.get("ticker", "?"),
+                            tag(r.get("day_pnl", "—")),
+                            tag(r.get("day_pct", "—")),
+                        ]
                         for r in rows
                     ],
                 )
             )
         lines.append(
-            f"*Day P&L: {_get(pnl, 'day_pnl')} | Week P&L: {_get(pnl, 'week_pnl')} | "
-            f"YTD: {_get(pnl, 'ytd_pnl')}*"
+            f"*Day P&L: {tag(_get(pnl, 'day_pnl'))} | Week P&L: {tag(_get(pnl, 'week_pnl'))} | "
+            f"YTD: {tag(_get(pnl, 'ytd_pnl'))}*"
         )
         lines.append("")
 
@@ -432,15 +460,13 @@ def render_afternoon(d: dict) -> str:
         lines.append("### Biggest position movers")
         for m in movers:
             lines.append(
-                f"- **{m.get('ticker', '?')}** {m.get('change', '—')} — {m.get('driver', '')}"
+                f"- **{m.get('ticker', '?')}** {tag(m.get('change', '—'))} — {m.get('driver', '')}"
             )
         lines.append("")
 
     if d.get("closing_bell_actions"):
         lines.append("---\n")
-        lines.append(
-            f"## Closing-bell positioning ({_get(d, 'minutes_to_close')} min to close)\n"
-        )
+        lines.append(f"## Closing-bell positioning ({_get(d, 'minutes_to_close')} min to close)\n")
         lines.append(d["closing_bell_actions"])
         lines.append("")
 
@@ -483,7 +509,12 @@ def render_afternoon(d: dict) -> str:
             _table(
                 ["Time ET", "Event", "Consensus", "Prior"],
                 [
-                    [r.get("time_et", "?"), r.get("name", "?"), r.get("consensus", "n/a"), r.get("prior", "n/a")]
+                    [
+                        r.get("time_et", "?"),
+                        r.get("name", "?"),
+                        r.get("consensus", "n/a"),
+                        r.get("prior", "n/a"),
+                    ]
                     for r in te
                 ],
             )
@@ -506,7 +537,12 @@ def render_afternoon(d: dict) -> str:
             _table(
                 ["Ticker", "Timing", "EPS est", "Implied move"],
                 [
-                    [r.get("ticker", "?"), r.get("timing", "?"), r.get("eps_est", "?"), r.get("implied_move", "?")]
+                    [
+                        r.get("ticker", "?"),
+                        r.get("timing", "?"),
+                        r.get("eps_est", "?"),
+                        r.get("implied_move", "?"),
+                    ]
                     for r in tearn
                 ],
             )
