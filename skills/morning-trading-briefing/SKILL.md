@@ -154,7 +154,9 @@ Build the structured object matching `references/BRIEF_DATA_SCHEMA.md`. Populate
 - `opportunities`
 - `geopolitical_summary` (optional; from the Step 1 geo wrap — Tier-1 sourced, corroborated. Feeds the markdown "Geopolitical" section + the Market Updates digest.)
 - `bottom_line` (one tight headline, even shorter than must-read; `config.style.bottom_line`)
-- `filters` (mirror `config.filters` so the scripts apply the same suppression: `{drop_minor_econ, voters_only}`)
+- `filters` (mirror `config.filters` so the scripts apply the same suppression: `{drop_minor_econ, voters_only, include_tier3, max_earnings}`)
+  - `include_tier3: false` (v2.3 default) folds Tier-3 macro (regional Fed surveys, MBA, bill auctions) out of the calendar; the notability override still keeps an all-minor day from blanking.
+  - `max_earnings: 8` (v2.3 default) caps the earnings digest to the top N by importance. Set `market_cap` on earnings entries (FMP `marketCap`) so ranking uses `market_cap × max(1, implied_move%)`; without it, ranking falls back to implied move. Your positions always sort first. `0` disables the cap.
 - `watchlist` (config.watchlist + mega_caps + holdings — bolded in must-read/bottom-line when `config.style.bold_tickers`)
 - `key_levels` + `risk_regime` (from `technicals.py` — see Step 6)
 
@@ -164,6 +166,13 @@ speakers are suppressed — *unless notable* (the only data of the day is kept v
 override in `event_filters.filter_releases`). `event_filters.py` is the shared,
 tested helper; render + compose both apply it. Set `impact` on every econ event so
 tags/colors/sort work.
+
+**Event budget (v2.3): aim for ≤ 12 calendar events/day** across all four
+sub-calendars. The levers: `include_tier3: false` trims low-impact macro, and
+`max_earnings: 8` caps the (single all-day) earnings digest's ranked list. A
+typical day lands around: ~3–6 timed macro (Macro Events) + 1 earnings digest +
+1 My Positions summary + 1 Market Updates digest. If you routinely exceed 12,
+lower `max_earnings` or confirm `include_tier3` is off.
 
 For each section that ends with a `so_what` field (rates, fx, sector rotation): write one sentence tying the data to the user's actual positions. This is the discipline that turns the brief from a data dump into actionable signal.
 

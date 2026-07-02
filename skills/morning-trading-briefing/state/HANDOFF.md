@@ -183,10 +183,21 @@ work it isn't reliable at. v2.0 fixes the root cause.
       on Drive archiving being enabled (needs `drive.briefings_folder_id`).
       Deferred until Drive is turned on.
 
-### v2.3 — Noise reduction
-- [ ] `macro.include_tier3: false` (default) drops Tier-3 macro events
-- [ ] Earnings cap: top N by `max(mcap, implied_move × mcap)`, N=8
-- [ ] SKILL.md documents expected event count per day (≤ 12)
+### v2.3 — Noise reduction [code complete]
+- [x] `filters.include_tier3: false` (default in config.example) folds Tier-3
+      macro (regional Fed surveys, MBA, bills) out of the calendar via
+      `event_filters.filter_releases(..., include_tier3=...)`. Notability
+      override preserved — an all-minor day still surfaces rather than blanks.
+- [x] Earnings cap: `event_filters.cap_earnings(entries, max_count=8)`, top N
+      by `earnings_importance` = `market_cap × max(1, implied_move%)` (the
+      faithful intent of `max(mcap, implied_move×mcap)`), falling back to
+      implied move when `market_cap` is absent; your positions always first.
+      Wired via `filters.max_earnings` (0 disables). Digest title + footer show
+      "top N of M" when capped. `market_cap` added to BRIEF_DATA_SCHEMA.md
+      (optional FMP `marketCap`).
+- [x] SKILL.md documents the ≤ 12 events/day budget + the levers.
+- [ ] Live verification of the per-day count against a real run — deferred to
+      the v2.5 deployment validation (3 quiet days on a test calendar).
 
 ### v2.4 — Manual holdings schema [DEFERRED]
 - [ ] Design `holdings:` block covering IB + Robinhood combined
