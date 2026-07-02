@@ -1,5 +1,0 @@
-[
-  {"ticker": "NVDA", "date": "2026-05-21", "timing": "AMC", "eps_est": "0.65", "implied_move": "8.5"},
-  {"ticker": "AAPL", "date": "2026-07-30", "timing": "AMC", "eps_est": "1.42", "implied_move": "4.2"},
-  {"ticker": "XOM", "date": "2026-05-27", "timing": "BMO", "eps_est": "2.05", "implied_move": "3.1"}
-]
