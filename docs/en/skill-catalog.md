@@ -70,6 +70,7 @@ A comprehensive catalog of all 55 Claude Trading Skills organized by category. B
 | **Market Top Detector** | Detects market top probability using O'Neil Distribution Days, Minervini Leading Stock Deterioration, and Defensive Rotation. 6-component tactical timing system | <span class="badge badge-free">No API</span> |
 | **[IBD Distribution Day Monitor]({{ '/en/skills/ibd-distribution-day-monitor/' | relative_url }})** | Daily IBD Distribution Day detection for QQQ/SPY with 25-session expiration and 5% invalidation. Risk classification (NORMAL/CAUTION/HIGH/SEVERE) and TQQQ/QQQ exposure recommendation | <span class="badge badge-api">FMP Required</span> |
 | **[Downtrend Duration Analyzer]({{ '/en/skills/downtrend-duration-analyzer/' | relative_url }})** | Analyzes historical downtrend durations (peak-to-trough) and generates interactive HTML histograms segmented by sector and market cap | <span class="badge badge-api">FMP Required</span> |
+| **[Morning Trading Briefing]({{ '/en/skills/morning-trading-briefing/' | relative_url }})** | Two-times-daily trading briefing (pre-open + afternoon) covering macro events, earnings, position action items, and fresh setups. Writes timed events to Google Calendar and archives to Google Drive | <span class="badge badge-free">No API</span> |
 
 ---
 
@@ -256,5 +257,7 @@ A comprehensive catalog of all 55 Claude Trading Skills organized by category. B
 | Parabolic Short Trade Planner | -- | -- | -- |
 | Trading Skills Navigator | -- | -- | -- |
 | Trade Performance Coach | -- | -- | -- |
+| Econ Indicator Explainer | -- | -- | -- |
+| Morning Trading Briefing | -- | -- | -- |
 
 "--" means not required. "Optional" means functionality is enhanced but the skill works without it.

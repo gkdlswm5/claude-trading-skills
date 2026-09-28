@@ -1,0 +1,3 @@
+# Cached daily fetches — don't commit
+cache/
+reaction_history/*.csv

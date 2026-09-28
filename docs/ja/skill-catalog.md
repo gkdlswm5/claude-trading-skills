@@ -70,6 +70,7 @@ Claude Trading Skillsの全スキルをカテゴリ別に紹介します。各�
 | **Market Top Detector** | O'NeilのDistribution Days、MinerviniのLeading Stock劣化、Defensive Rotationで天井確率を検出 | <span class="badge badge-free">API不要</span> |
 | **[IBD Distribution Day Monitor]({{ '/ja/skills/ibd-distribution-day-monitor/' | relative_url }})** | QQQ/SPYのIBD式Distribution Dayを日次検出。25セッション失効・5%上昇無効化を追跡し、d5/d15/d25クラスタからNORMAL/CAUTION/HIGH/SEVERE判定とTQQQ/QQQエクスポージャ推奨を生成 | <span class="badge badge-api">FMP必須</span> |
 | **[Downtrend Duration Analyzer]({{ '/ja/skills/downtrend-duration-analyzer/' | relative_url }})** | 過去の下落トレンド期間（ピーク→トラフ）を分析し、セクター・時価総額別のインタラクティブヒストグラムを生成 | <span class="badge badge-api">FMP必須</span> |
+| **[Morning Trading Briefing]({{ '/ja/skills/morning-trading-briefing/' | relative_url }})** | Two-times-daily trading briefing (pre-open + afternoon) covering macro events, earnings, position action items, and fresh setups. Writes timed events to Google Calendar and archives to Google Drive | <span class="badge badge-free">API不要</span> |
 
 ---
 

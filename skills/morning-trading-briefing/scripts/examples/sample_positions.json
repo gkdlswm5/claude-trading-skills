@@ -1,0 +1,38 @@
+[
+  {
+    "ticker": "TLT",
+    "asset_type": "stock",
+    "qty": 200,
+    "last_price": 89.00,
+    "stop_price": 87.50
+  },
+  {
+    "ticker": "AAPL",
+    "asset_type": "stock",
+    "qty": 100,
+    "last_price": 224.00,
+    "stop_price": 200.00
+  },
+  {
+    "ticker": "NVDA Jun20 145C",
+    "asset_type": "option_short",
+    "qty": -1,
+    "delta": 0.42,
+    "dte": 30,
+    "roll_candidates": ["Jul18 150C @ $4.20", "Jul18 155C @ $3.10", "Aug15 150C @ $5.40"]
+  },
+  {
+    "ticker": "NVDA Jan26 110C",
+    "asset_type": "option_long",
+    "qty": 1,
+    "delta": 0.78,
+    "dte": 240
+  },
+  {
+    "ticker": "XOM Jul18 130P",
+    "asset_type": "short_put",
+    "qty": -2,
+    "delta": -0.18,
+    "dte": 60
+  }
+]

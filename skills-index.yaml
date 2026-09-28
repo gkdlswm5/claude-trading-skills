@@ -617,6 +617,34 @@ skills:
   - market_top_composite_score
   workflows:
   - market-regime-daily
+- id: morning-trading-briefing
+  display_name: Morning Trading Briefing
+  category: market-regime
+  status: production
+  summary: Two-times-daily trading briefing (pre-open + afternoon) covering macro events, earnings,
+    position action items, and fresh setups; writes timed events to Google Calendar and archives to Google Drive.
+  timeframe: daily
+  difficulty: advanced
+  integrations:
+  - id: google_calendar
+    type: mcp
+    requirement: required
+    note: Writes timed events to Google Calendar sub-calendars via google_calendar_client.py
+  - id: google_drive
+    type: mcp
+    requirement: required
+    note: Archives the rendered markdown briefing to Google Drive via google_drive_client.py
+  - id: ib_gateway
+    type: broker
+    requirement: optional
+    note: Optional local TWS/IB Gateway integration for position-specific sections
+  inputs:
+  - config_yaml
+  - sub_skill_outputs
+  outputs:
+  - brief_markdown
+  - calendar_events
+  workflows: []
 - id: options-strategy-advisor
   display_name: Options Strategy Advisor
   category: advanced-satellite
